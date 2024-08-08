@@ -1,0 +1,46 @@
+[package]
+name = "client"
+version = "0.1.0"   
+edition = "2021"
+
+[dependencies]
+utils = { git = "https://github.com/alexlatif/rutils.git", branch = "main"}
+anyhow = "1.0.86"
+error-stack = { version = "0.5.0", features = ["anyhow"] }
+futures = "0.3.30"
+futures-util = "0.3.30"
+podman-api = "0.10.0"
+redis = { version = "0.25.4", features = ["aio", "tokio-comp"] }
+rstest = "0.21.0"
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.117"
+tokio = { version = "1.38.0", features = ["full", "tracing"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+
+# client
+bollard = "0.16.1"
+clap = { version = "4.5.4", features = ["cargo", "derive", "env"] }
+clippy = "0.0.302"
+serde_yaml = "0.9.34"
+nix = "0.29.0"
+regex = "1.10.5"
+# reqwest = "0.12.5"
+uuid = { version = "1.10.0", features = ["v4"] }
+k8s-openapi = "0.22.0"
+hyper = { version = "1.4.1", features = ["client"] }
+rustify = "0.6.0"
+rustify_derive = "0.5.3"
+derive_builder = "0.20.0"
+reqwest = { version = "0.12.5", features = ["json"] }
+
+[[bin]]
+name = "mlx"
+path = "src/main.rs"
+
+# 1 rebuild axum server remotely
+# 2 tool design - S3, HTTPS
+# 3 base axum server: ssh machine deploy run,  python env, health check
+# 4 trigger connection 
+# 5 trigger - cron, db, receiver queue
+# 6 new -  current git (default), repo http adder, new folder

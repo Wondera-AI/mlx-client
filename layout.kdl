@@ -1,0 +1,31 @@
+layout {
+    pane split_direction="vertical" {
+        // pane {
+        //     command "zsh"
+        //     args "-c" "multipass shell kubemaster"
+        // }
+        pane {
+            command "zsh"
+            args "-c" "mlx train foo 1"
+        }
+        pane split_direction="horizontal" {
+            pane {
+                command "zsh"
+                args "-c" "cargo build --release && cargo install --path ."
+            }
+            pane {
+                command "zsh"
+                // args "-c" "cd ../ptrain && exec zsh"
+                args "-c" "mlx train foo 1"
+            }
+        }
+    }
+}
+        // pane command="bash" {
+        //         args "-c" "cargo build --release && cargo install --path ."
+        // }
+        // pane split_direction="horizontal" {
+        //     pane
+        //     pane command="zsh" {
+        //         args "-c" "cargo build --release && cargo install --path . && inf run foo 1"
+        // }
