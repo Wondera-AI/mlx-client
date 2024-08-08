@@ -19,7 +19,7 @@ tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
 
 # client
-bollard = "0.16.1"
+# bollard = "0.16.1"
 clap = { version = "4.5.4", features = ["cargo", "derive", "env"] }
 clippy = "0.0.302"
 serde_yaml = "0.9.34"

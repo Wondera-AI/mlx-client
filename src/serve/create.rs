@@ -1,7 +1,5 @@
 use crate::prelude::*;
-// use crate::Method;
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
-// use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
@@ -71,19 +69,22 @@ pub struct Param {
 }
 
 #[tokio::main]
-pub async fn deploy_service(conf: &crate::ServeConfig) -> RResult<(), AnyErr> {
+pub async fn deploy_service(conf: &crate::ServeConfig) -> RResult<(), AnyErr2> {
     // ensure podman CLI is installed
-    ensure_podman_running()?;
+    ensure_podman_running().change_context(err2!("Failed to ensure Podman is running"))?;
 
     let service_id = format!("{}-{}", conf.service_name, uuid::Uuid::new_v4().to_string());
     let image_uri = format!("{}:{}", IMAGE_REGISTRY, service_id);
 
     // Build, tag and push new image
     info!("Building, tagging and pushing new image: {}...", image_uri);
-    // match build_tag_and_push_image(&service_id, &image_uri) {
-    //     Ok(_) => info!("Image {} has been pushed to the registry.", image_uri),
-    //     Err(e) => error!("Failed to push image: {}", e),
-    // }
+    match build_tag_and_push_image(&service_id, &image_uri) {
+        Ok(_) => info!("Image {} has been pushed to the registry.", image_uri),
+        Err(e) => {
+            error!("Failed to build, tag and push image: {}", e);
+            return Err(e);
+        }
+    }
 
     info!("Image {} has been pushed to the registry.", image_uri);
 
@@ -99,7 +100,7 @@ pub async fn deploy_service(conf: &crate::ServeConfig) -> RResult<(), AnyErr> {
         .expect("Failed to read config.json");
 
     let service_params = build_service_params_from_json(&contents)
-        .map_err(|_| err!(AnyErr, "Failed to build Service Schema"))?;
+        .change_context(err2!("Failed to build service params"))?;
 
     info!("Parsing UploadHandlerParams...");
     let cpu_limit = Quantity(conf.cpu_limit.as_deref().unwrap_or("0").to_string());
@@ -132,12 +133,15 @@ pub async fn deploy_service(conf: &crate::ServeConfig) -> RResult<(), AnyErr> {
         .build()
         .unwrap();
 
-    // endpoint.send().await.change_context(AnyErr)?;
+    endpoint
+        .send()
+        .await
+        .change_context(err2!("Failed upload_service request"))?;
 
     Ok(())
 }
 
-fn start_podman_machine() -> RResult<(), AnyErr> {
+fn start_podman_machine() -> RResult<(), AnyErr2> {
     info!("Initializing Podman machine...");
     if let Err(e) = run_command("podman", &["machine", "init"]) {
         if e.to_string().contains("VM already exists") {
@@ -159,11 +163,11 @@ fn start_podman_machine() -> RResult<(), AnyErr> {
     Ok(())
 }
 
-fn check_podman_connection() -> RResult<(), AnyErr> {
+fn check_podman_connection() -> RResult<(), AnyErr2> {
     let output = Command::new("podman")
         .args(&["system", "connection", "list"])
         .output()
-        .change_context(AnyErr)?;
+        .change_context(err2!("Failed to check Podman connection"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -171,21 +175,24 @@ fn check_podman_connection() -> RResult<(), AnyErr> {
         info!("Podman connection verified.");
         return Ok(());
     } else {
-        return Err(err!(AnyErr, "Podman connection not found."));
+        return Err(Report::new(err2!("Podman connection not found")));
     }
 }
 
-fn ensure_podman_running() -> RResult<(), AnyErr> {
+fn ensure_podman_running() -> RResult<(), AnyErr2> {
     if run_command("podman", &["--version"]).is_ok() {
         info!("Podman is already installed.");
     } else {
         if cfg!(target_os = "linux") {
             info!("Installing Podman on Linux...");
-            run_command("sudo", &["apt-get", "update"])?;
-            run_command("sudo", &["apt-get", "-y", "install", "podman"])?;
+            run_command("sudo", &["apt-get", "update"])
+                .change_context(err2!("Failed to update"))?;
+            run_command("sudo", &["apt-get", "-y", "install", "podman"])
+                .change_context(err2!("Failed to install podman"))?;
         } else if cfg!(target_os = "macos") {
             info!("Installing Podman on macOS...");
-            run_command("brew", &["install", "podman"])?;
+            run_command("brew", &["install", "podman"])
+                .change_context(err2!("Failed to install"))?;
         } else {
             panic!("Unsupported operating system");
         }
@@ -203,34 +210,30 @@ fn ensure_podman_running() -> RResult<(), AnyErr> {
     }
 }
 
-fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), AnyErr> {
-    run_command("podman", &["build", "-t", service_id, "."])?;
-    run_command("podman", &["tag", service_id, image_uri])?;
+fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), AnyErr2> {
+    run_command("podman", &["build", "-t", service_id, "."])
+        .change_context(err2!("Failed to build image"))?;
+    run_command("podman", &["tag", service_id, image_uri])
+        .change_context(err2!("Failed to tag image"))?;
     // TODO tmp login of podman
-    run_command("podman", &["push", image_uri])?;
+    run_command("podman", &["push", image_uri]).change_context(err2!("Failed to push image"))?;
 
     Ok(())
 }
 
-// fn build_dynamic_struct(json: &Value) -> HashMap<String, Value> {
-//     let mut result = HashMap::new();
+fn build_service_params_from_json(contents: &str) -> Result<ServiceParams, AnyErr2> {
+    let json: Value =
+        serde_json::from_str(&contents).expect("Failed to parse config.json contents");
 
-//     if let Value::Object(map) = json {
-//         for (key, value) in map {
-//             result.insert(key.clone(), value.clone());
-//         }
-//     }
+    let input = json
+        .get("input")
+        .ok_or_else(|| err2!("Missing input field"))
+        .unwrap();
 
-//     result
-// }
-
-fn build_service_params_from_json(
-    contents: &str,
-) -> Result<ServiceParams, Box<dyn std::error::Error>> {
-    let json: Value = serde_json::from_str(&contents).expect("Failed to parse JSON");
-
-    let input = json.get("input").ok_or("Missing input field")?;
-    let output = json.get("output").ok_or("Missing output field")?;
+    let output = json
+        .get("output")
+        .ok_or_else(|| err2!("Missing output field"))
+        .unwrap();
 
     let service_input_params = ServiceInputParams {
         path: input
@@ -252,69 +255,3 @@ fn build_service_params_from_json(
         output: service_output_params,
     })
 }
-
-// fn parse_quantity(quantity: &str) -> RResult<Quantity, AnyErr> {
-//     Ok(Quantity(quantity.to_string()))
-// }
-
-// is valid service - toml check, docker, build test, run test
-// let docker = Docker::connect_with_local_defaults()?;
-
-// // Build image
-// let build_opts = BuildImageOptions {
-//     // dockerfile: "Dockerfile".to_string(),
-//     t: image_uri.clone(),
-//     ..Default::default()
-// };
-
-// let mut build_stream = docker.build_image(build_opts, None, None);
-// while let Some(build_result) = build_stream.next().await {
-//     match build_result {
-//         Ok(output) => debug!("{:?}", output),
-//         Err(e) => error!("Build error: {:?}", e),
-//     }
-// }
-
-// let tag_options = TagImageOptions {
-//     repo: "alelat/wondera",
-//     tag: "latest",
-// };
-// docker
-//     .tag_image("alelat/wondera:service_a", Some(tag_options))
-//     .await
-//     .unwrap();
-
-// // Push image
-// let auth_config = AuthConfig {
-//     username: Some("your_dockerhub_username".to_string()),
-//     password: Some("your_dockerhub_password".to_string()),
-//     ..Default::default()
-// };
-// let push_options = PushImageOptions {
-//     tag: "latest",
-//     ..Default::default()
-// };
-// let mut push_stream = docker.push_image("alelat/wondera", Some(push_options), None);
-// while let Some(build_result) = push_stream.next().await {
-//     match build_result {
-//         Ok(output) => debug!("{:?}", output),
-//         Err(e) => error!("Push error: {:?}", e),
-//     }
-// }
-
-// push_stream
-//     .for_each(|push_info| async {
-//         match push_info {
-//             Ok(PushImageInfo { .. }) => println!("Pushed successfully"),
-//             Ok(PushImageInfo::Error { message, .. }) => eprintln!("Push error: {}", message),
-//             _ => {}
-//         }
-//     })
-//     .await;
-// let mut push_stream = docker.push_image(&image_uri, None, None);
-// while let Some(push_result) = push_stream.next().await {
-//     match push_result {
-//         Ok(output) => debug!("{:?}", output),
-//         Err(e) => error!("Push error: {:?}", e),
-//     }
-// }

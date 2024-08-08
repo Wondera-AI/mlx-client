@@ -1,5 +1,6 @@
 // use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
+use serde::de;
 // use serde::{Deserialize, Serialize};
 // use serde_json::{json, Number};
 // use serde_yaml::{from_str, Value};
@@ -15,7 +16,7 @@ mod serve;
 mod train;
 mod xp;
 pub use reqwest::Method;
-use serve::deploy_service;
+use serve::{delete_service, deploy_service};
 use tracing::{error, info, Level};
 use train::{assert_files_exist, run_python_script_with_args};
 use xp::stream_logs;
@@ -168,6 +169,16 @@ enum ServeActions {
     Rm {
         #[arg(help = "Name of the service")]
         name: String,
+        #[arg(
+            help = "Optional version of the service - will delete all under name if not specified"
+        )]
+        version: Option<u32>,
+        #[arg(
+            long,
+            help = "Force delete all versions of the service",
+            default_value = "false"
+        )]
+        all: bool,
     },
     #[command(about = "View the logs of a service")]
     Logs {
@@ -329,7 +340,7 @@ fn main() {
                 py_env_checker(false);
             }
             ServeActions::Deploy(conf) => {
-                println!("Deploying the server to a service");
+                info!("Deploying the Service to a MLX cluster...");
 
                 assert_files_exist(vec![SCRIPT_PATH, CONFIG_PATH, SERVICE_CONFIG_PATH]);
 
@@ -343,9 +354,18 @@ fn main() {
                 println!("Listing the available services");
                 // Implement the logic to list the available services
             }
-            ServeActions::Rm { name } => {
-                println!("Removing service {}", name);
-                // Implement the logic to remove a service
+            ServeActions::Rm { name, version, all } => {
+                if let Some(version) = version {
+                    info!("Removing service {} version {}", name, version);
+                    delete_service(name, Some(*version));
+                } else {
+                    if !all {
+                        error!("Please specify a version to remove or use the --all flag to remove all versions of the service");
+                    } else {
+                        info!("Removing all versions of service {}", name);
+                        delete_service(name, None);
+                    }
+                }
             }
             ServeActions::Logs { name } => {
                 println!("Viewing logs for service {}", name);
