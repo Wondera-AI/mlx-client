@@ -1,9 +1,13 @@
 use crate::prelude::*;
+use crate::serve::SERVER_URL;
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
+use lazy_static::lazy_static;
+use serde::de;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::env;
 use std::process::Command;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
@@ -14,8 +18,12 @@ use utils::{
     errors::prelude::*,
 };
 
-static IMAGE_REGISTRY: &str = "alelat/wondera";
-static SERVER_URL: &str = "http://localhost:3000";
+// static IMAGE_REGISTRY: &str = "alelat/wondera";
+static IMAGE_REGISTRY: &str = "ghcr.io/alexlatif/wondera";
+lazy_static! {
+    static ref REGISTRY_TOKEN: String =
+        env::var("GHCR_TOKEN").expect("Environment variable GHCR_TOKEN must be set");
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UploadHandlerParams {
@@ -70,6 +78,10 @@ pub struct Param {
 
 #[tokio::main]
 pub async fn deploy_service(conf: &crate::ServeConfig) -> RResult<(), AnyErr2> {
+    assert!(
+        env::var("GHCR_TOKEN").is_ok(),
+        "Environment variable GHCR_TOKEN must be set"
+    );
     // ensure podman CLI is installed
     ensure_podman_running().change_context(err2!("Failed to ensure Podman is running"))?;
 
@@ -77,7 +89,10 @@ pub async fn deploy_service(conf: &crate::ServeConfig) -> RResult<(), AnyErr2> {
     let image_uri = format!("{}:{}", IMAGE_REGISTRY, service_id);
 
     // Build, tag and push new image
-    info!("Building, tagging and pushing new image: {}...", image_uri);
+    info!(
+        "Building, tagging and pushing new image (eta 2-5 mins): {}...",
+        image_uri
+    );
     match build_tag_and_push_image(&service_id, &image_uri) {
         Ok(_) => info!("Image {} has been pushed to the registry.", image_uri),
         Err(e) => {
@@ -137,6 +152,11 @@ pub async fn deploy_service(conf: &crate::ServeConfig) -> RResult<(), AnyErr2> {
         .send()
         .await
         .change_context(err2!("Failed upload_service request"))?;
+
+    info!(
+        "Service {} has been deployed successfully.",
+        conf.service_name
+    );
 
     Ok(())
 }
@@ -215,7 +235,22 @@ fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), An
         .change_context(err2!("Failed to build image"))?;
     run_command("podman", &["tag", service_id, image_uri])
         .change_context(err2!("Failed to tag image"))?;
-    // TODO tmp login of podman
+
+    run_command(
+        "podman",
+        &[
+            "login",
+            "ghcr.io",
+            "--username",
+            "USERNAME",
+            "--password",
+            REGISTRY_TOKEN.as_str(),
+        ],
+    )
+    .change_context(err2!("Failed to login to image registry"))?;
+
+    info!("Pushing image to registry... (this may take a few minutes)");
+
     run_command("podman", &["push", image_uri]).change_context(err2!("Failed to push image"))?;
 
     Ok(())

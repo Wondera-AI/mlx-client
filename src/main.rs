@@ -16,7 +16,7 @@ mod serve;
 mod train;
 mod xp;
 pub use reqwest::Method;
-use serve::{delete_service, deploy_service};
+use serve::{delete_service, deploy_service, list_services};
 use tracing::{error, info, Level};
 use train::{assert_files_exist, run_python_script_with_args};
 use xp::stream_logs;
@@ -164,7 +164,10 @@ enum ServeActions {
     //     conf: ServeConfig,
     // },
     #[command(about = "List the available services")]
-    Ls,
+    Ls {
+        #[arg(long, help = "Name of the service")]
+        name: Option<String>,
+    },
     #[command(about = "Remove a service")]
     Rm {
         #[arg(help = "Name of the service")]
@@ -350,9 +353,10 @@ fn main() {
 
                 let _ = deploy_service(conf);
             }
-            ServeActions::Ls => {
-                println!("Listing the available services");
-                // Implement the logic to list the available services
+            ServeActions::Ls { name } => {
+                info!("Listing available services");
+
+                list_services(name.as_deref());
             }
             ServeActions::Rm { name, version, all } => {
                 if let Some(version) = version {

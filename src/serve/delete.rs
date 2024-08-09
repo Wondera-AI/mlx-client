@@ -1,8 +1,7 @@
+use crate::serve::SERVER_URL;
 use std::collections::HashMap;
 use utils::endpoints::{Endpoint, Method};
 use utils::prelude::*;
-
-static SERVER_URL: &str = "http://localhost:3000";
 
 #[tokio::main]
 pub async fn delete_service(
