@@ -2,7 +2,6 @@ use crate::prelude::*;
 use crate::serve::SERVER_URL;
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use lazy_static::lazy_static;
-use serde::de;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_json::Value;
@@ -11,7 +10,6 @@ use std::env;
 use std::process::Command;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use utils::errors::{AnyErr, RResult};
 use utils::{
     cmd::run_command,
     endpoints::{Endpoint, Method},

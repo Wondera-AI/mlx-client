@@ -19,6 +19,7 @@ pub use reqwest::Method;
 use serve::{delete_service, deploy_service, list_services};
 use tracing::{error, info, Level};
 use train::{assert_files_exist, run_python_script_with_args};
+use utils::cmd::run_command;
 use xp::stream_logs;
 
 static TRAIN_REPO_URL: &str = "https://github.com/Wondera-AI/mlx.git";
@@ -155,6 +156,11 @@ struct ServeConfig {
 
 #[derive(Subcommand)]
 enum ServeActions {
+    #[command(about = "Run the server repo locally")]
+    New {
+        #[arg(help = "Name of the service")]
+        name: String,
+    },
     #[command(about = "Run the server locally")]
     Run,
     #[command(about = "Deploy the server to a service")]
@@ -335,6 +341,31 @@ fn main() {
             }
         },
         Commands::Serve { action } => match action {
+            ServeActions::New { name } => {
+                info!("Creating new service: {}", name);
+
+                let target_path = Path::new(&name);
+
+                info!(
+                    "Cloning the training repo to {}",
+                    target_path.to_str().unwrap()
+                );
+                run_command(
+                    "git",
+                    &["clone", TRAIN_REPO_URL, target_path.to_str().unwrap()],
+                );
+                // Check if Python 3.11 is installed, if not install it
+                py_env_checker(false);
+
+                // Change to the newly cloned repo directory
+                std::env::set_current_dir(target_path).expect("Failed to change directory");
+
+                // Install project dependencies using pdm
+                info!("Installing project dependencies...");
+                run_command("pdm", &["install"]);
+
+                info!("Setup complete for {}", name);
+            }
             ServeActions::Run => {
                 println!("Running the server locally");
                 // Implement the logic to run the server locally
