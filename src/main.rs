@@ -1,22 +1,14 @@
-// use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
-use serde::de;
-// use serde::{Deserialize, Serialize};
-// use serde_json::{json, Number};
-// use serde_yaml::{from_str, Value};
-use std::{
-    // collections::HashMap,
-    // env,
-    // error::Error,
-    path::Path,
-    process::Command,
-};
+use std::{path::Path, process::Command};
 mod prelude;
 mod serve;
 mod train;
 mod xp;
 pub use reqwest::Method;
-use serve::{delete_service, deploy_service, list_services};
+use serve::{
+    delete_service, deploy_service, jobs_service, list_services, log_service, scale_service,
+    DeployServiceConf, ScaleServiceConf,
+};
 use tracing::{error, info, Level};
 use train::{assert_files_exist, run_python_script_with_args};
 use utils::cmd::run_command;
@@ -128,51 +120,26 @@ enum DataActions {
     Rm,
 }
 
-#[derive(Args, Clone)]
-struct ServeConfig {
-    #[arg(long, help = "Name of the service")]
-    service_name: String,
-    #[arg(
-        long,
-        help = "CPU cores or milicores limit requested",
-        required_unless_present = "gpu_limit"
-    )]
-    cpu_limit: Option<String>,
-    // #[arg(long, help = "Use available GPU devices")]
-    // use_gpu: Option<bool>,
-    #[arg(
-        long,
-        help = "GPU cores or milicores requested",
-        // required_unless_present = "use_gpu"
-    )]
-    gpu_limit: Option<String>,
-    #[arg(long, help = "Memory limit requested")]
-    memory_limit: String,
-    #[arg(long, help = "Number of concurrent jobs available per Service")]
-    concurrent_jobs: i8,
-    // #[arg(long, help = "Maximum request rate limit")]
-    // max_rate_limit: i8,
-}
-
 #[derive(Subcommand)]
 enum ServeActions {
-    #[command(about = "Run the server repo locally")]
+    #[command(about = "Start a new service project cloning the PINF template")]
     New {
         #[arg(help = "Name of the service")]
         name: String,
     },
     #[command(about = "Run the server locally")]
-    Run,
+    Run {
+        #[arg(help = "Run the server in debug mode")]
+        test: Option<u32>,
+    },
     #[command(about = "Deploy the server to a service")]
-    Deploy(ServeConfig),
-    // Deploy {
-    //     #[arg(help = "Name of the service")]
-    //     conf: ServeConfig,
-    // },
+    Deploy(DeployServiceConf),
     #[command(about = "List the available services")]
     Ls {
-        #[arg(long, help = "Name of the service")]
+        #[arg(help = "Name of the service")]
         name: Option<String>,
+        #[arg(long, help = "Show only the service pointers", default_value = "false")]
+        pointers: bool,
     },
     #[command(about = "Remove a service")]
     Rm {
@@ -189,8 +156,33 @@ enum ServeActions {
         )]
         all: bool,
     },
+    #[command(about = "Scale the service")]
+    Scale(ScaleServiceConf),
     #[command(about = "View the logs of a service")]
     Logs {
+        #[arg(help = "Name of the service")]
+        name: String,
+        #[arg(help = "Job ID of the service")]
+        job_id: String,
+        #[arg(
+            long,
+            help = "Include validated input in the logs",
+            default_value_t = false
+        )]
+        input: bool,
+        #[arg(long, help = "Include response in the logs", default_value_t = false)]
+        response: bool,
+        #[arg(
+            long,
+            help = "Include pod job logs in the output",
+            default_value_t = false
+        )]
+        logs: bool,
+        #[arg(long, help = "Include timer information", default_value_t = false)]
+        timer: bool,
+    },
+    #[command(about = "View the jobs of a service")]
+    Jobs {
         #[arg(help = "Name of the service")]
         name: String,
     },
@@ -366,7 +358,7 @@ fn main() {
 
                 info!("Setup complete for {}", name);
             }
-            ServeActions::Run => {
+            ServeActions::Run { test } => {
                 println!("Running the server locally");
                 // Implement the logic to run the server locally
                 assert_files_exist(vec![SCRIPT_PATH, CONFIG_PATH, SERVICE_CONFIG_PATH]);
@@ -380,14 +372,14 @@ fn main() {
 
                 py_env_checker(true);
 
-                run_python_script_with_args("main.py", Some(&["--build"]));
+                run_python_script_with_args("main.py", Some(&["--build", "1"]));
 
                 let _ = deploy_service(conf);
             }
-            ServeActions::Ls { name } => {
+            ServeActions::Ls { name, pointers } => {
                 info!("Listing available services");
 
-                list_services(name.as_deref());
+                list_services(name.as_deref(), *pointers);
             }
             ServeActions::Rm { name, version, all } => {
                 if let Some(version) = version {
@@ -402,9 +394,27 @@ fn main() {
                     }
                 }
             }
-            ServeActions::Logs { name } => {
-                println!("Viewing logs for service {}", name);
-                // Implement the logic to view the logs of a service
+            ServeActions::Scale(conf) => {
+                info!("Scaling the service");
+
+                let _ = scale_service(conf);
+            }
+            ServeActions::Logs {
+                name,
+                job_id,
+                input,
+                response,
+                logs,
+                timer,
+            } => {
+                info!("Viewing logs for service: {} with job_id: {}", name, job_id);
+
+                log_service(name, job_id, *input, *response, *logs, *timer);
+            }
+            ServeActions::Jobs { name } => {
+                info!("Viewing jobs for service {}", name);
+
+                jobs_service(name);
             }
         },
     }

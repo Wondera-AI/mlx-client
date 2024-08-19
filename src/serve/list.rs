@@ -8,13 +8,14 @@ use utils::endpoints::{Endpoint, Method};
 use utils::prelude::*;
 
 #[tokio::main]
-pub async fn list_services(service_name: Option<&str>) -> RResult<Value, AnyErr2> {
+pub async fn list_services(service_name: Option<&str>, pointers: bool) -> RResult<Value, AnyErr2> {
     let mut endpoint_builder = Endpoint::builder()
         .base_url(SERVER_URL)
         .endpoint("/list_service")
         .method(Method::GET);
 
     let mut query = HashMap::new();
+    query.insert("pointers".to_string(), pointers.to_string());
     if let Some(name) = service_name {
         query.insert("service_name".to_string(), name.to_string());
     }

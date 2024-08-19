@@ -1,8 +1,10 @@
 use crate::prelude::*;
 use crate::serve::SERVER_URL;
+use clap::Args;
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use serde_json::error;
 use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -21,6 +23,39 @@ static IMAGE_REGISTRY: &str = "ghcr.io/alexlatif/wondera";
 lazy_static! {
     static ref REGISTRY_TOKEN: String =
         env::var("GHCR_TOKEN").expect("Environment variable GHCR_TOKEN must be set");
+}
+
+#[derive(Args, Clone)]
+pub struct DeployServiceConf {
+    #[arg(help = "Name of the service")]
+    service_name: String,
+
+    #[arg(long, help = "Replicas requested")]
+    replicas: Option<u32>,
+
+    #[arg(
+        long,
+        help = "CPU cores or milicores limit requested",
+        required_unless_present = "gpu_limit"
+    )]
+    cpu_limit: Option<String>,
+
+    // #[arg(long, help = "Use available GPU devices")]
+    // use_gpu: Option<bool>,
+    #[arg(
+        long,
+        help = "GPU cores or milicores requested",
+        // required_unless_present = "use_gpu"
+    )]
+    gpu_limit: Option<String>,
+
+    #[arg(long, help = "Memory limit requested")]
+    memory_limit: String,
+
+    #[arg(long, help = "Number of concurrent jobs available per Service")]
+    concurrent_jobs: u32,
+    // #[arg(long, help = "Maximum request rate limit")]
+    // max_rate_limit: i8,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -47,6 +82,8 @@ pub struct ResourceRequest {
     use_gpu: bool,
 
     gpu_limit: Quantity,
+
+    concurrent_jobs: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -75,7 +112,7 @@ pub struct Param {
 }
 
 #[tokio::main]
-pub async fn deploy_service(conf: &crate::ServeConfig) -> RResult<(), AnyErr2> {
+pub async fn deploy_service(conf: &DeployServiceConf) -> RResult<(), AnyErr2> {
     assert!(
         env::var("GHCR_TOKEN").is_ok(),
         "Environment variable GHCR_TOKEN must be set"
@@ -119,13 +156,15 @@ pub async fn deploy_service(conf: &crate::ServeConfig) -> RResult<(), AnyErr2> {
     let cpu_limit = Quantity(conf.cpu_limit.as_deref().unwrap_or("0").to_string());
     let gpu_limit = Quantity(conf.gpu_limit.as_deref().unwrap_or("0").to_string());
     let memory_limit = Quantity(conf.memory_limit.clone());
+    let replicas = conf.replicas.unwrap_or(1);
 
     let resource_request = ResourceRequest {
-        replicas: Some(conf.concurrent_jobs as u32),
+        replicas: Some(replicas),
         cpu_limit,
         memory_limit,
         use_gpu: conf.gpu_limit.is_some(),
         gpu_limit,
+        concurrent_jobs: conf.concurrent_jobs,
     };
 
     let upload_handler_params = UploadHandlerParams {
@@ -254,37 +293,193 @@ fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), An
     Ok(())
 }
 
-fn build_service_params_from_json(contents: &str) -> Result<ServiceParams, AnyErr2> {
+fn build_service_params_from_json(contents: &str) -> RResult<ServiceParams, AnyErr2> {
+    debug!("Contents: {:?}", contents);
     let json: Value =
         serde_json::from_str(&contents).expect("Failed to parse config.json contents");
 
+    debug!("JSON: {:?}", json);
+
     let input = json
         .get("input")
-        .ok_or_else(|| err2!("Missing input field"))
-        .unwrap();
+        .ok_or(Report::new(err2!("Missing input field")))?;
 
     let output = json
         .get("output")
-        .ok_or_else(|| err2!("Missing output field"))
-        .unwrap();
+        .ok_or(Report::new(err2!("Missing output field")))?;
+
+    let convert_required = |required: &str| -> bool {
+        match required {
+            "True" => true,
+            _ => false,
+        }
+    };
+
+    let convert_params = |params: &Value| -> RResult<Vec<Param>, AnyErr2> {
+        debug!("Converting params: {:?}", params);
+        let result = params
+            .as_array()
+            .ok_or(Report::new(err2!(format!(
+                "Expected array, found {:?}",
+                params
+            ))))?
+            .iter()
+            .map(|p| {
+                let mut param_map: serde_json::Map<String, Value> = p
+                    .as_object()
+                    .ok_or(Report::new(err2!(format!(
+                        "Expected object, found {:?}",
+                        p
+                    ))))?
+                    .clone();
+
+                let required_value =
+                    param_map
+                        .remove("required")
+                        .ok_or(Report::new(err2!(format!(
+                            "Missing required field in param: {:?}",
+                            p
+                        ))))?;
+
+                let required_str = required_value.as_str().ok_or(Report::new(err2!(format!(
+                    "Invalid required field type: {:?}",
+                    p
+                ))))?;
+
+                let required_bool = convert_required(required_str);
+
+                param_map.insert("required".to_string(), Value::Bool(required_bool));
+
+                let param: Param = serde_json::from_value(Value::Object(param_map))
+                    .change_context(err2!(format!("Failed to convert param: {:?}", p)))?;
+
+                Ok(param)
+            })
+            .collect::<RResult<Vec<Param>, AnyErr2>>();
+
+        debug!("Converted params result: {:?}", result);
+        result
+    };
 
     let service_input_params = ServiceInputParams {
         path: input
             .get("path")
-            .map(|v| serde_json::from_value(v.clone()).unwrap_or_default()),
+            .map_or(Ok(None), |v| convert_params(v).map(Some))?,
         query: input
             .get("query")
-            .map(|v| serde_json::from_value(v.clone()).unwrap_or_default()),
+            .map_or(Ok(None), |v| convert_params(v).map(Some))?,
         body: input
             .get("body")
-            .map(|v| serde_json::from_value(v.clone()).unwrap_or_default()),
+            .map_or(Ok(None), |v| convert_params(v).map(Some))?,
     };
 
-    let service_output_params: HashMap<String, Param> =
-        serde_json::from_value(output.clone()).unwrap_or_default();
+    debug!("Service input params: {:?}", service_input_params);
+
+    let convert_output_params = |params: &Value| -> RResult<HashMap<String, Param>, AnyErr2> {
+        debug!("Converting output params: {:?}", params);
+        let result = params
+            .as_array()
+            .ok_or(Report::new(err2!(format!(
+                "Expected array, found {:?}",
+                params
+            ))))?
+            .iter()
+            .map(|p| {
+                let mut param_map: serde_json::Map<String, Value> = p
+                    .as_object()
+                    .ok_or(Report::new(err2!(format!(
+                        "Expected object, found {:?}",
+                        p
+                    ))))?
+                    .clone();
+
+                let required_value =
+                    param_map
+                        .remove("required")
+                        .ok_or(Report::new(err2!(format!(
+                            "Missing required field in param: {:?}",
+                            p
+                        ))))?;
+
+                let required_str = required_value.as_str().ok_or(Report::new(err2!(format!(
+                    "Invalid required field type: {:?}",
+                    p
+                ))))?;
+
+                let required_bool = convert_required(required_str);
+
+                param_map.insert("required".to_string(), Value::Bool(required_bool));
+
+                let param: Param = serde_json::from_value(Value::Object(param_map))
+                    .change_context(err2!(format!("Failed to convert param: {:?}", p)))?;
+
+                Ok((param.name.clone(), param))
+            })
+            .collect::<RResult<HashMap<String, Param>, AnyErr2>>();
+
+        debug!("Converted output params result: {:?}", result);
+        result
+    };
+
+    let service_output_params: HashMap<String, Param> = convert_output_params(output)?;
 
     Ok(ServiceParams {
         input: service_input_params,
         output: service_output_params,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_service_params_from_json() {
+        let json_data = r#"
+        {
+            "input": {
+                "path": [{"name": "required_foo", "dtype": "string", "required": "True"}],
+                "query": [{"name": "bar", "dtype": "string", "required": "False"}],
+                "body": [
+                    {"name": "mtype", "dtype": "string", "required": "True"},
+                    {"name": "optional_smoothing", "dtype": "integer", "required": "False"}
+                ]
+            },
+            "output": [
+                {"name": "foo", "dtype": "string", "required": "True"},
+                {"name": "bar", "dtype": "string", "required": "True"}
+            ]
+        }
+        "#;
+
+        let result =
+            build_service_params_from_json(json_data).expect("Failed to build service params");
+
+        assert_eq!(result.input.path.as_ref().unwrap()[0].name, "required_foo");
+        assert_eq!(result.input.path.as_ref().unwrap()[0].dtype, "string");
+        assert!(result.input.path.as_ref().unwrap()[0].required);
+
+        assert_eq!(result.input.query.as_ref().unwrap()[0].name, "bar");
+        assert_eq!(result.input.query.as_ref().unwrap()[0].dtype, "string");
+        assert!(!result.input.query.as_ref().unwrap()[0].required);
+
+        assert_eq!(result.input.body.as_ref().unwrap()[0].name, "mtype");
+        assert_eq!(result.input.body.as_ref().unwrap()[0].dtype, "string");
+        assert!(result.input.body.as_ref().unwrap()[0].required);
+
+        assert_eq!(
+            result.input.body.as_ref().unwrap()[1].name,
+            "optional_smoothing"
+        );
+        assert_eq!(result.input.body.as_ref().unwrap()[1].dtype, "integer");
+        assert!(!result.input.body.as_ref().unwrap()[1].required);
+
+        assert_eq!(result.output["foo"].name, "foo");
+        assert_eq!(result.output["foo"].dtype, "string");
+        assert!(result.output["foo"].required);
+
+        assert_eq!(result.output["bar"].name, "bar");
+        assert_eq!(result.output["bar"].dtype, "string");
+        assert!(result.output["bar"].required);
+    }
 }
