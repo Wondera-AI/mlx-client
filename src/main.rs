@@ -15,6 +15,7 @@ use utils::cmd::run_command;
 use xp::stream_logs;
 
 static TRAIN_REPO_URL: &str = "https://github.com/Wondera-AI/mlx.git";
+static PY_INF_REPO_URL: &str = "https://github.com/Wondera-AI/mlx-pyinf.git";
 static SCRIPT_PATH: &str = "main.py";
 static CONFIG_PATH: &str = "pyproject.toml";
 static SERVICE_CONFIG_PATH: &str = "config.json";
@@ -344,7 +345,7 @@ fn main() {
                 );
                 run_command(
                     "git",
-                    &["clone", TRAIN_REPO_URL, target_path.to_str().unwrap()],
+                    &["clone", PY_INF_REPO_URL, target_path.to_str().unwrap()],
                 );
                 // Check if Python 3.11 is installed, if not install it
                 py_env_checker(false);
@@ -368,11 +369,13 @@ fn main() {
             ServeActions::Deploy(conf) => {
                 info!("Deploying the Service to a MLX cluster...");
 
-                assert_files_exist(vec![SCRIPT_PATH, CONFIG_PATH, SERVICE_CONFIG_PATH]);
+                assert_files_exist(vec![SCRIPT_PATH, CONFIG_PATH]);
 
                 py_env_checker(true);
 
                 run_python_script_with_args("main.py", Some(&["--build", "1"]));
+
+                assert_files_exist(vec![SERVICE_CONFIG_PATH]);
 
                 let _ = deploy_service(conf);
             }

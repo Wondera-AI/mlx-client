@@ -122,6 +122,7 @@ pub async fn deploy_service(conf: &DeployServiceConf) -> RResult<(), AnyErr2> {
 
     let service_id = format!("{}-{}", conf.service_name, uuid::Uuid::new_v4().to_string());
     let image_uri = format!("{}:{}", IMAGE_REGISTRY, service_id);
+    // let image_uri = "ghcr.io/alexlatif/wondera:a3-5fa813db-f191-4c55-b462-b4e08fde68f5".to_string();
 
     // Build, tag and push new image
     info!(
