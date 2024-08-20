@@ -64,7 +64,7 @@ pub async fn log_service(
                 None => validated_input.to_string(),
             };
 
-            input_table.add_row(vec![Cell::new("Validated Input"), Cell::new(pretty_input)]);
+            input_table.add_row(vec![Cell::new(pretty_input)]);
             main_table.add_row(vec![Cell::new(input_table)]);
         }
     }
@@ -76,6 +76,7 @@ pub async fn log_service(
             response_table.set_header(vec![
                 Cell::new("Response").add_attribute(comfy_table::Attribute::Bold)
             ]);
+
             let pretty_response = match response.as_str() {
                 Some(str) => match serde_json::from_str::<Value>(str) {
                     Ok(json_value) => serde_json::to_string_pretty(&json_value)
@@ -85,23 +86,8 @@ pub async fn log_service(
                 None => response.to_string(),
             };
 
-            response_table.add_row(vec![Cell::new("Response"), Cell::new(pretty_response)]);
+            response_table.add_row(vec![Cell::new(pretty_response)]);
             main_table.add_row(vec![Cell::new(response_table)]);
-        }
-    }
-
-    // Logs section
-    if include_logs {
-        if let Some(logs) = log_data.get("logs") {
-            let mut logs_table = Table::new();
-            logs_table.set_header(vec![
-                Cell::new("Logs").add_attribute(comfy_table::Attribute::Bold)
-            ]);
-            logs_table.add_row(vec![
-                Cell::new("Logs"),
-                Cell::new(logs.to_string()).set_alignment(CellAlignment::Center),
-            ]);
-            main_table.add_row(vec![Cell::new(logs_table)]);
         }
     }
 
@@ -134,6 +120,26 @@ pub async fn log_service(
         }
 
         main_table.add_row(vec![Cell::new(timer_table)]);
+    }
+
+    // Logs section
+    if include_logs {
+        if let Some(logs) = log_data.get("logs") {
+            let mut logs_table = Table::new();
+            logs_table.set_header(vec![
+                Cell::new("Logs").add_attribute(comfy_table::Attribute::Bold)
+            ]);
+
+            // Convert the log string to lines, reverse them, and add each line as a separate row
+            let log_entries: Vec<&str> = logs.as_str().unwrap_or("").lines().collect();
+            for entry in log_entries {
+                logs_table.add_row(vec![Cell::new(entry).set_alignment(CellAlignment::Left)]);
+            }
+
+            main_table.add_row(vec![
+                Cell::new(logs_table).set_alignment(CellAlignment::Left)
+            ]);
+        }
     }
 
     // Output the main table
