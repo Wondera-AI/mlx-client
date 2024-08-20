@@ -137,8 +137,6 @@ pub async fn deploy_service(conf: &DeployServiceConf) -> RResult<(), AnyErr2> {
         }
     }
 
-    info!("Image {} has been pushed to the registry.", image_uri);
-
     info!("Reading config.json...");
 
     let mut file = File::open("config.json")
@@ -290,6 +288,11 @@ fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), An
     info!("Pushing image to registry... (this may take a few minutes)");
 
     run_command("podman", &["push", image_uri]).change_context(err2!("Failed to push image"))?;
+
+    info!("Removing local image...");
+
+    run_command("podman", &["rmi", image_uri])
+        .change_context(err2!("Failed to remove the image"))?;
 
     Ok(())
 }
