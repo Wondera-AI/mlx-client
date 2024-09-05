@@ -1,4 +1,4 @@
-use crate::serve::SERVER_URL;
+use crate::serve::get_server_url;
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
@@ -10,7 +10,7 @@ use utils::prelude::*;
 #[tokio::main]
 pub async fn list_services(service_name: Option<&str>, pointers: bool) -> RResult<Value, AnyErr2> {
     let mut endpoint_builder = Endpoint::builder()
-        .base_url(SERVER_URL)
+        .base_url(&get_server_url().await)
         .endpoint("/list_service")
         .method(Method::GET);
 

@@ -20,6 +20,7 @@ static SCRIPT_PATH: &str = "main.py";
 static CONFIG_PATH: &str = "pyproject.toml";
 static SERVICE_CONFIG_PATH: &str = "config.json";
 static RAY_ADDRESS: &str = "auto";
+static SERVER_ADDRESS: &str = "http://3.132.162.86:30000";
 
 #[derive(Parser)]
 #[command(name = "MLX")]
@@ -460,10 +461,16 @@ fn py_env_checker(install: bool) -> bool {
 
     if !pdm_installed {
         info!("Installing PDM...");
-        Command::new("python3.11")
-            .args(["-m", "pip", "install", "--user", "pdm"])
-            .status()
-            .expect("Failed to install PDM");
+        if cfg!(target_os = "linux") {
+            run_command("sudo apt install python3-venv", &[]);
+        }
+        run_command(
+            "curl -sSL https://pdm-project.org/install-pdm.py | python3 -",
+            &[],
+        );
+
+        let command = r"echo 'export PATH=$PATH:/usr/local/bin' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
+        run_command(command, &[]);
     }
 
     info!("Python3.11 & PDM all ok");

@@ -1,15 +1,16 @@
 use crate::prelude::*;
-use crate::serve::SERVER_URL;
+use crate::serve::get_server_url;
 use clap::Args;
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use serde_json::error;
 use serde_json::json;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::env;
+use std::io::Write;
 use std::process::Command;
+use std::process::Stdio;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use utils::{
@@ -19,7 +20,10 @@ use utils::{
 };
 
 // static IMAGE_REGISTRY: &str = "alelat/wondera";
-static IMAGE_REGISTRY: &str = "ghcr.io/alexlatif/wondera";
+// static IMAGE_REGISTRY: &str = "ghcr.io/alexlatif/wondera";
+// static IMAGE_REGISTRY: &str = "docker.io/alelat/wondera";
+static IMAGE_REGISTRY: &str = "h.nodestaking.com/mlx/";
+
 lazy_static! {
     static ref REGISTRY_TOKEN: String =
         env::var("GHCR_TOKEN").expect("Environment variable GHCR_TOKEN must be set");
@@ -113,16 +117,13 @@ pub struct Param {
 
 #[tokio::main]
 pub async fn deploy_service(conf: &DeployServiceConf) -> RResult<(), AnyErr2> {
-    assert!(
-        env::var("GHCR_TOKEN").is_ok(),
-        "Environment variable GHCR_TOKEN must be set"
-    );
     // ensure podman CLI is installed
     ensure_podman_running().change_context(err2!("Failed to ensure Podman is running"))?;
 
-    let service_id = format!("{}-{}", conf.service_name, uuid::Uuid::new_v4().to_string());
-    let image_uri = format!("{}:{}", IMAGE_REGISTRY, service_id);
+    let service_id = format!("{}:{}", conf.service_name, uuid::Uuid::new_v4().to_string());
+    let image_uri = format!("{}/{}", IMAGE_REGISTRY, service_id);
     // let image_uri = "ghcr.io/alexlatif/wondera:a3-5fa813db-f191-4c55-b462-b4e08fde68f5".to_string();
+    // let image_uri = "docker push h.nodestaking.com/mlx/mnist:1".to_string();
 
     // Build, tag and push new image
     info!(
@@ -177,7 +178,7 @@ pub async fn deploy_service(conf: &DeployServiceConf) -> RResult<(), AnyErr2> {
     debug!("UploadHandlerParams: {:?}", upload_handler_params);
 
     let endpoint = Endpoint::builder()
-        .base_url(SERVER_URL)
+        .base_url(&get_server_url().await)
         .endpoint("/upload_service")
         .method(Method::POST)
         .json_body(json!(upload_handler_params))
@@ -267,23 +268,10 @@ fn ensure_podman_running() -> RResult<(), AnyErr2> {
 }
 
 fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), AnyErr2> {
-    run_command("podman", &["build", "-t", service_id, "."])
+    run_command("podman", &["build", "-t", image_uri, "."])
         .change_context(err2!("Failed to build image"))?;
-    run_command("podman", &["tag", service_id, image_uri])
-        .change_context(err2!("Failed to tag image"))?;
 
-    run_command(
-        "podman",
-        &[
-            "login",
-            "ghcr.io",
-            "--username",
-            "USERNAME",
-            "--password",
-            REGISTRY_TOKEN.as_str(),
-        ],
-    )
-    .change_context(err2!("Failed to login to image registry"))?;
+    login().change_context(err2!("Failed to login to image registry"))?;
 
     info!("Pushing image to registry... (this may take a few minutes)");
 
@@ -293,6 +281,41 @@ fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), An
 
     run_command("podman", &["rmi", image_uri])
         .change_context(err2!("Failed to remove the image"))?;
+
+    Ok(())
+}
+
+fn login() -> RResult<(), AnyErr2> {
+    let password = "R$G5#XFY&xVMn6IJ";
+
+    let mut cmd = Command::new("podman")
+        .arg("login")
+        .arg("https://h.nodestaking.com/")
+        .arg("--username")
+        .arg("wondera")
+        .arg("--password-stdin")
+        .stdin(Stdio::piped()) // Open a pipe to write to stdin
+        .spawn()
+        .change_context(err2!("Failed to spawn login command"))?;
+
+    // Write the password to stdin
+    if let Some(mut stdin) = cmd.stdin.take() {
+        stdin
+            .write_all(password.as_bytes())
+            .change_context(err2!("Failed to write to stdin"))?;
+    }
+
+    // Wait for the command to finish
+    let output = cmd
+        .wait_with_output()
+        .change_context(err2!("Failed to wait for command"))?;
+
+    // Print output for debugging (optional)
+    if !output.status.success() {
+        eprintln!("Command failed with output: {:?}", output);
+    } else {
+        println!("Login successful!");
+    }
 
     Ok(())
 }
@@ -436,6 +459,12 @@ fn build_service_params_from_json(contents: &str) -> RResult<ServiceParams, AnyE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_login_success() {
+        let result = login();
+        assert!(result.is_ok(), "Login should succeed");
+    }
 
     #[test]
     fn test_build_service_params_from_json() {

@@ -10,5 +10,5 @@ MLX is a ...
 
 # Usage
 ```bash
-curl -sSf https://gist.githubusercontent.com/alexlatif/96360d22c3144467b96b5b6a4134ad2e/raw/641f3ecad9b9d1985751f0c389e864357f84876c/mlx-client.sh | sh
+curl -sSL https://raw.githubusercontent.com/Wondera-AI/mlx-client/main/install.sh | bash
 ```

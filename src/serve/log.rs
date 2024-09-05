@@ -1,4 +1,4 @@
-use crate::serve::SERVER_URL;
+use crate::serve::get_server_url;
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
@@ -17,7 +17,7 @@ pub async fn log_service(
     include_timer: bool,
 ) -> RResult<Value, AnyErr2> {
     let mut endpoint_builder = Endpoint::builder()
-        .base_url(SERVER_URL)
+        .base_url(&get_server_url().await)
         .endpoint(&format!("/logs/{}/{}", service_name, job_id))
         .method(Method::GET);
 

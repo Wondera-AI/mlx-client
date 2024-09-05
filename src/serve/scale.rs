@@ -1,4 +1,4 @@
-use crate::serve::SERVER_URL;
+use crate::serve::get_server_url;
 use clap::Args;
 use serde_json::json;
 use utils::endpoints::{Endpoint, Method};
@@ -31,7 +31,7 @@ pub struct ScaleServiceConf {
 #[tokio::main]
 pub async fn scale_service(conf: &ScaleServiceConf) -> RResult<(), AnyErr2> {
     let mut endpoint_builder = Endpoint::builder()
-        .base_url(SERVER_URL)
+        .base_url(&get_server_url().await)
         .endpoint(&format!(
             "/scale_service/{}/{}",
             conf.service_name, conf.service_version

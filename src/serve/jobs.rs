@@ -1,4 +1,4 @@
-use crate::serve::SERVER_URL;
+use crate::serve::get_server_url;
 use chrono::{DateTime, Utc};
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
@@ -11,7 +11,7 @@ use utils::prelude::*;
 pub async fn jobs_service(service_name: &str) -> RResult<(), AnyErr2> {
     // Build the endpoint for fetching jobs
     let endpoint = Endpoint::builder()
-        .base_url(SERVER_URL)
+        .base_url(&get_server_url().await)
         .endpoint(&format!("/jobs/{}", service_name))
         .method(Method::GET)
         .build()
