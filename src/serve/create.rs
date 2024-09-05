@@ -268,8 +268,19 @@ fn ensure_podman_running() -> RResult<(), AnyErr2> {
 }
 
 fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), AnyErr2> {
-    run_command("podman", &["build", "-t", image_uri, "."])
-        .change_context(err2!("Failed to build image"))?;
+    run_command(
+        "podman",
+        &[
+            "buildx",
+            "build",
+            "--platform",
+            "linux/amd64,linux/arm64",
+            "-t",
+            image_uri,
+            ".",
+        ],
+    )
+    .change_context(err2!("Failed to build image"))?;
 
     login().change_context(err2!("Failed to login to image registry"))?;
 

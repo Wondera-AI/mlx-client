@@ -471,6 +471,8 @@ fn py_env_checker(install: bool) -> bool {
 
         let command = r"echo 'export PATH=$PATH:/usr/local/bin' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
         run_command(command, &[]);
+        let command = r"echo 'export PATH=/root/.local/bin:$PATH' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
+        run_command(command, &[]);
     }
 
     info!("Python3.11 & PDM all ok");
