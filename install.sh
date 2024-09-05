@@ -4,13 +4,15 @@
 echo "Installing system dependencies..."
 if [ -x "$(command -v apt)" ]; then
     sudo apt update
-    sudo apt install -y build-essential git curl
+    sudo apt install -y build-essential git curl pkg-config libssl-dev
 elif [ -x "$(command -v yum)" ]; then
     sudo yum groupinstall -y "Development Tools"
+    sudo yum install -y pkg-config openssl-devel
 elif [ -x "$(command -v dnf)" ]; then
     sudo dnf groupinstall -y "Development Tools"
+    sudo dnf install -y pkg-config openssl-devel
 elif [ -x "$(command -v pacman)" ]; then
-    sudo pacman -S --noconfirm base-devel git curl
+    sudo pacman -S --noconfirm base-devel git curl pkgconf openssl
 else
     echo "Unsupported package manager. Please install build-essential or equivalent tools manually."
     exit 1
