@@ -22,7 +22,7 @@ use utils::{
 // static IMAGE_REGISTRY: &str = "alelat/wondera";
 // static IMAGE_REGISTRY: &str = "ghcr.io/alexlatif/wondera";
 // static IMAGE_REGISTRY: &str = "docker.io/alelat/wondera";
-static IMAGE_REGISTRY: &str = "h.nodestaking.com/mlx/";
+static IMAGE_REGISTRY: &str = "h.nodestaking.com/mlx";
 
 lazy_static! {
     static ref REGISTRY_TOKEN: String =
