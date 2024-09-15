@@ -2,23 +2,26 @@ use clap::{Args, Parser, Subcommand};
 use std::{path::Path, process::Command};
 mod prelude;
 mod serve;
-mod train;
 mod xp;
 pub use reqwest::Method;
 use serve::{
-    delete_service, deploy_service, jobs_service, list_services, log_service, scale_service,
-    DeployServiceConf, ScaleServiceConf,
+    delete_service, deploy_service, jobs_service, list_services, log_service, run_tests,
+    scale_service, ScaleServiceConf, TomlConfig,
 };
-use tracing::{error, info, Level};
-use train::{assert_files_exist, run_python_script_with_args};
-use utils::cmd::run_command;
+use tracing_subscriber::{filter::EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
+use utils::{
+    cmd::{run_command, run_python_script},
+    files::assert_files_exist,
+    prelude::*,
+};
 use xp::stream_logs;
 
 static TRAIN_REPO_URL: &str = "https://github.com/Wondera-AI/mlx.git";
 static PY_INF_REPO_URL: &str = "https://github.com/Wondera-AI/mlx-pyinf.git";
 static SCRIPT_PATH: &str = "main.py";
 static CONFIG_PATH: &str = "pyproject.toml";
-static SERVICE_CONFIG_PATH: &str = "config.json";
+static SERVICE_CONFIG_PATH: &str = "schema.json";
+static SERVICE_TOML_PATH: &str = "mlx.toml";
 static RAY_ADDRESS: &str = "auto";
 static SERVER_ADDRESS: &str = "http://3.132.162.86:30000";
 
@@ -129,13 +132,16 @@ enum ServeActions {
         #[arg(help = "Name of the service")]
         name: String,
     },
-    #[command(about = "Run the server locally")]
+    #[command(about = "Test the Service locally with tests defined in the mlx.toml")]
     Run {
-        #[arg(help = "Run the server in debug mode")]
-        test: Option<u32>,
+        #[arg(help = "Optionally define a test name")]
+        test: Option<String>,
+        #[arg(long, help = "Run test call remotely", default_value = "false")]
+        remote: bool,
     },
     #[command(about = "Deploy the server to a service")]
-    Deploy(DeployServiceConf),
+    Deploy,
+    // (DeployServiceConf),
     #[command(about = "List the available services")]
     Ls {
         #[arg(help = "Name of the service")]
@@ -191,8 +197,11 @@ enum ServeActions {
 }
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_max_level(Level::DEBUG)
+    tracing_subscriber::registry()
+        .with(fmt::layer().with_writer(std::io::stdout))
+        .with(EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+        ))
         .init();
 
     let cli = Cli::parse();
@@ -245,7 +254,7 @@ fn main() {
 
                 py_env_checker(false);
 
-                run_python_script_with_args("main.py", Some(&["--gen-bindings", "1"]));
+                run_python_script("main.py", Some(&["--gen-bindings", "1"]));
             }
             TrainActions::Run => {
                 info!("Running the training experiment locally");
@@ -254,7 +263,7 @@ fn main() {
 
                 py_env_checker(false);
 
-                run_python_script_with_args("main.py", Some(&["--gen-bindings", "0"]));
+                run_python_script("main.py", Some(&["--gen-bindings", "0"]));
             }
             TrainActions::Launch {
                 ray_address,
@@ -266,7 +275,7 @@ fn main() {
 
                 py_env_checker(false);
 
-                run_python_script_with_args(
+                run_python_script(
                     "main.py",
                     Some(&[
                         "--gen-bindings",
@@ -360,25 +369,56 @@ fn main() {
 
                 info!("Setup complete for {}", name);
             }
-            ServeActions::Run { test } => {
-                println!("Running the server locally");
+            ServeActions::Run { test, remote } => {
+                if !remote {
+                    info!("Running Service locally");
+                } else {
+                    info!("Calling Service endpoint");
+                }
                 // Implement the logic to run the server locally
-                assert_files_exist(vec![SCRIPT_PATH, CONFIG_PATH, SERVICE_CONFIG_PATH]);
+                assert_files_exist(vec![
+                    SCRIPT_PATH,
+                    CONFIG_PATH,
+                    SERVICE_CONFIG_PATH,
+                    SERVICE_TOML_PATH,
+                ]);
 
-                py_env_checker(false);
+                if !remote {
+                    py_env_checker(true);
+                    run_python_script("main.py", Some(&["--build", "1"]));
+                    assert_files_exist(vec![SERVICE_CONFIG_PATH]);
+                }
+
+                tokio::runtime::Runtime::new().unwrap().block_on(async {
+                    let res = run_tests(test.clone(), *remote);
+                    res.await.unwrap();
+                });
             }
-            ServeActions::Deploy(conf) => {
+            ServeActions::Deploy => {
                 info!("Deploying the Service to a MLX cluster...");
 
-                assert_files_exist(vec![SCRIPT_PATH, CONFIG_PATH]);
+                assert_files_exist(vec![
+                    SCRIPT_PATH,
+                    CONFIG_PATH,
+                    SERVICE_CONFIG_PATH,
+                    SERVICE_TOML_PATH,
+                ]);
 
-                py_env_checker(true);
+                py_env_checker(false);
 
-                run_python_script_with_args("main.py", Some(&["--build", "1"]));
+                run_python_script("main.py", Some(&["--build", "1"]));
 
                 assert_files_exist(vec![SERVICE_CONFIG_PATH]);
 
-                let _ = deploy_service(conf);
+                let conf: TomlConfig = {
+                    let toml_data = std::fs::read_to_string(SERVICE_TOML_PATH)
+                        .expect("Failed to read mlx.toml file");
+                    let conf: TomlConfig =
+                        toml::from_str(&toml_data).expect("Failed to parse mlx.toml");
+                    conf
+                };
+
+                let _ = deploy_service(&conf);
             }
             ServeActions::Ls { name, pointers } => {
                 info!("Listing available services");
@@ -413,7 +453,8 @@ fn main() {
             } => {
                 info!("Viewing logs for service: {} with job_id: {}", name, job_id);
 
-                log_service(name, job_id, *input, *response, *logs, *timer);
+                let resp = log_service(name, job_id, *input, *response, *logs, *timer);
+                resp.unwrap();
             }
             ServeActions::Jobs { name } => {
                 info!("Viewing jobs for service {}", name);

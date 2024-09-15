@@ -3,6 +3,7 @@ pub mod delete;
 pub mod jobs;
 pub mod list;
 pub mod log;
+pub mod run;
 pub mod scale;
 
 // re-exports crud functions
@@ -11,6 +12,7 @@ pub use delete::*;
 pub use jobs::*;
 pub use list::*;
 pub use log::*;
+pub use run::*;
 pub use scale::*;
 
 // use lazy_static::lazy_static;
@@ -19,8 +21,8 @@ use reqwest::get;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
-static LOCAL_SERVER_URL: &str = "http://localhost:3000";
-static REMOTE_SERVER_URL: &str = "http://3.132.162.86:30000";
+static LOCAL_SERVER_URL: &str = "http://localhost:3000/test";
+static REMOTE_SERVER_URL: &str = "http://3.132.162.86:30000/test";
 
 static SERVER_URL: Lazy<OnceCell<Arc<String>>> = Lazy::new(|| OnceCell::new());
 

@@ -29,37 +29,26 @@ lazy_static! {
         env::var("GHCR_TOKEN").expect("Environment variable GHCR_TOKEN must be set");
 }
 
-#[derive(Args, Clone)]
-pub struct DeployServiceConf {
-    #[arg(help = "Name of the service")]
-    service_name: String,
+#[derive(Deserialize, Debug)]
+pub struct TomlConfig {
+    service: String,
 
-    #[arg(long, help = "Replicas requested")]
-    replicas: Option<u32>,
+    stage: String,
 
-    #[arg(
-        long,
-        help = "CPU cores or milicores limit requested",
-        required_unless_present = "gpu_limit"
-    )]
-    cpu_limit: Option<String>,
+    resources: Resources,
+}
 
-    // #[arg(long, help = "Use available GPU devices")]
-    // use_gpu: Option<bool>,
-    #[arg(
-        long,
-        help = "GPU cores or milicores requested",
-        // required_unless_present = "use_gpu"
-    )]
-    gpu_limit: Option<String>,
+#[derive(Deserialize, Debug)]
+struct Resources {
+    cpu_limit: u32,
 
-    #[arg(long, help = "Memory limit requested")]
-    memory_limit: String,
+    gpu_limit: Option<u32>,
 
-    #[arg(long, help = "Number of concurrent jobs available per Service")]
+    memory_limit: u32,
+
     concurrent_jobs: u32,
-    // #[arg(long, help = "Maximum request rate limit")]
-    // max_rate_limit: i8,
+
+    arch: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -97,6 +86,144 @@ pub struct ServiceParams {
     pub output: HashMap<String, Param>,
 }
 
+impl ServiceParams {
+    pub fn from_json(contents: &str) -> RResult<Self, AnyErr2> {
+        debug!("Contents: {:?}", contents);
+        let json: Value =
+            serde_json::from_str(&contents).expect("Failed to parse schema.json contents");
+
+        debug!("JSON: {:?}", json);
+
+        let input = json
+            .get("input")
+            .ok_or(Report::new(err2!("Missing input field")))?;
+
+        let output = json
+            .get("output")
+            .ok_or(Report::new(err2!("Missing output field")))?;
+
+        let convert_required = |required: &Value| -> RResult<bool, AnyErr2> {
+            if let Some(required_str) = required.as_str() {
+                match required_str {
+                    "True" | "true" => Ok(true),
+                    "False" | "false" => Ok(false),
+                    _ => Err(Report::new(err2!(format!(
+                        "Invalid required field string: {:?}",
+                        required
+                    )))),
+                }
+            } else if let Some(required_bool) = required.as_bool() {
+                Ok(required_bool)
+            } else {
+                Err(Report::new(err2!(format!(
+                    "Invalid required field type: {:?}",
+                    required
+                ))))
+            }
+        };
+
+        let convert_params = |params: &Value| -> RResult<Vec<Param>, AnyErr2> {
+            debug!("Converting params: {:?}", params);
+            let result = params
+                .as_array()
+                .ok_or(Report::new(err2!(format!(
+                    "Expected array, found {:?}",
+                    params
+                ))))?
+                .iter()
+                .map(|p| {
+                    let mut param_map: serde_json::Map<String, Value> = p
+                        .as_object()
+                        .ok_or(Report::new(err2!(format!(
+                            "Expected object, found {:?}",
+                            p
+                        ))))?
+                        .clone();
+
+                    let required_value =
+                        param_map
+                            .remove("required")
+                            .ok_or(Report::new(err2!(format!(
+                                "Missing required field in param: {:?}",
+                                p
+                            ))))?;
+                    let required_bool = convert_required(&required_value)?;
+                    param_map.insert("required".to_string(), Value::Bool(required_bool));
+
+                    let param: Param = serde_json::from_value(Value::Object(param_map))
+                        .change_context(err2!(format!("Failed to convert param: {:?}", p)))?;
+
+                    Ok(param)
+                })
+                .collect::<RResult<Vec<Param>, AnyErr2>>();
+
+            debug!("Converted params result: {:?}", result);
+            result
+        };
+
+        let service_input_params = ServiceInputParams {
+            path: input
+                .get("path")
+                .map_or(Ok(None), |v| convert_params(v).map(Some))?,
+            query: input
+                .get("query")
+                .map_or(Ok(None), |v| convert_params(v).map(Some))?,
+            body: input
+                .get("body")
+                .map_or(Ok(None), |v| convert_params(v).map(Some))?,
+        };
+
+        debug!("Service input params: {:?}", service_input_params);
+
+        let convert_output_params = |params: &Value| -> RResult<HashMap<String, Param>, AnyErr2> {
+            debug!("Converting output params: {:?}", params);
+            let result = params
+                .as_array()
+                .ok_or(Report::new(err2!(format!(
+                    "Expected array, found {:?}",
+                    params
+                ))))?
+                .iter()
+                .map(|p| {
+                    let mut param_map: serde_json::Map<String, Value> = p
+                        .as_object()
+                        .ok_or(Report::new(err2!(format!(
+                            "Expected object, found {:?}",
+                            p
+                        ))))?
+                        .clone();
+
+                    let required_value =
+                        param_map
+                            .remove("required")
+                            .ok_or(Report::new(err2!(format!(
+                                "Missing required field in param: {:?}",
+                                p
+                            ))))?;
+
+                    let required_bool = convert_required(&required_value)?;
+                    param_map.insert("required".to_string(), Value::Bool(required_bool));
+
+                    let param: Param = serde_json::from_value(Value::Object(param_map))
+                        .change_context(err2!(format!("Failed to convert param: {:?}", p)))?;
+
+                    Ok((param.name.clone(), param))
+                })
+                .collect::<RResult<HashMap<String, Param>, AnyErr2>>();
+
+            debug!("Converted output params result: {:?}", result);
+            result
+        };
+
+        let service_output_params: HashMap<String, Param> = convert_output_params(output)?;
+
+        Ok(ServiceParams {
+            input: service_input_params,
+            output: service_output_params,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ServiceInputParams {
     pub path: Option<Vec<Param>>,
@@ -116,13 +243,13 @@ pub struct Param {
 }
 
 #[tokio::main]
-pub async fn deploy_service(conf: &DeployServiceConf) -> RResult<(), AnyErr2> {
+pub async fn deploy_service(conf: &TomlConfig) -> RResult<(), AnyErr2> {
     // ensure podman CLI is installed
-    ensure_podman_running().change_context(err2!("Failed to ensure Podman is running"))?;
+    // ensure_podman_running().change_context(err2!("Failed to ensure Podman is running"))?;
 
-    let service_id = format!("{}:{}", conf.service_name, uuid::Uuid::new_v4().to_string());
+    let service_id = format!("{}:{}", conf.service, uuid::Uuid::new_v4().to_string());
     let image_uri = format!("{}/{}", IMAGE_REGISTRY, service_id);
-    // let image_uri = "ghcr.io/alexlatif/wondera:a3-5fa813db-f191-4c55-b462-b4e08fde68f5".to_string();
+    let image_uri = "h.nodestaking.com/mlx/mnist:fc517390-6af5-4a1d-a00b-b0a459d9990a".to_string();
     // let image_uri = "docker push h.nodestaking.com/mlx/mnist:1".to_string();
 
     // Build, tag and push new image
@@ -130,45 +257,51 @@ pub async fn deploy_service(conf: &DeployServiceConf) -> RResult<(), AnyErr2> {
         "Building, tagging and pushing new image (eta 2-5 mins): {}...",
         image_uri
     );
-    match build_tag_and_push_image(&service_id, &image_uri) {
-        Ok(_) => info!("Image {} has been pushed to the registry.", image_uri),
-        Err(e) => {
-            error!("Failed to build, tag and push image: {}", e);
-            return Err(e);
-        }
-    }
+    // match build_tag_and_push_image(&service_id, &image_uri, &conf.resources.arch) {
+    //     Ok(_) => info!("Image {} has been pushed to the registry.", image_uri),
+    //     Err(e) => {
+    //         error!("Failed to build, tag and push image: {}", e);
+    //         return Err(e);
+    //     }
+    // }
 
-    info!("Reading config.json...");
+    info!("Reading schema.json...");
 
-    let mut file = File::open("config.json")
-        .await
-        .expect("Failed to open config.json");
+    let service_params = {
+        let mut file = File::open("schema.json")
+            .await
+            .expect("Failed to open schema.json");
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)
+            .await
+            .expect("Failed to read schema.json");
 
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)
-        .await
-        .expect("Failed to read config.json");
-
-    let service_params = build_service_params_from_json(&contents)
-        .change_context(err2!("Failed to build service params"))?;
+        ServiceParams::from_json(&contents).expect("Failed to build service params")
+    };
 
     info!("Parsing UploadHandlerParams...");
-    let cpu_limit = Quantity(conf.cpu_limit.as_deref().unwrap_or("0").to_string());
-    let gpu_limit = Quantity(conf.gpu_limit.as_deref().unwrap_or("0").to_string());
-    let memory_limit = Quantity(conf.memory_limit.clone());
-    let replicas = conf.replicas.unwrap_or(1);
+    let cpu_limit = Quantity(conf.resources.cpu_limit.to_string());
+    let gpu_limit = Quantity(conf.resources.gpu_limit.unwrap_or(0).to_string());
+    let memory_limit = {
+        let mem_bytes = conf.resources.memory_limit.to_string();
+        let mem_mib = format!("{}Mi", mem_bytes);
+
+        Quantity(mem_mib)
+    };
+
+    let replicas = 1;
 
     let resource_request = ResourceRequest {
         replicas: Some(replicas),
         cpu_limit,
         memory_limit,
-        use_gpu: conf.gpu_limit.is_some(),
+        use_gpu: conf.resources.gpu_limit.is_some(),
         gpu_limit,
-        concurrent_jobs: conf.concurrent_jobs,
+        concurrent_jobs: conf.resources.concurrent_jobs,
     };
 
     let upload_handler_params = UploadHandlerParams {
-        service_name: conf.service_name.clone(),
+        service_name: conf.service.clone(),
         image_uri: image_uri.clone(),
         resource_request,
         service_schema: service_params,
@@ -190,17 +323,17 @@ pub async fn deploy_service(conf: &DeployServiceConf) -> RResult<(), AnyErr2> {
         .await
         .change_context(err2!("Failed upload_service request"))?;
 
-    info!(
-        "Service {} has been deployed successfully.",
-        conf.service_name
-    );
+    info!("Service {} has been deployed successfully.", conf.service);
 
     Ok(())
 }
 
 fn start_podman_machine() -> RResult<(), AnyErr2> {
     info!("Initializing Podman machine...");
-    if let Err(e) = run_command("podman", &["machine", "init"]) {
+    if let Err(e) = run_command(
+        "podman",
+        &["machine", "init", "--cpus", "4", "--memory", "10240"],
+    ) {
         if e.to_string().contains("VM already exists") {
             info!("Podman machine already exists, skipping initialization.");
         } else {
@@ -267,31 +400,50 @@ fn ensure_podman_running() -> RResult<(), AnyErr2> {
     }
 }
 
-fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), AnyErr2> {
-    run_command(
-        "podman",
-        &[
-            "buildx",
-            "build",
-            "--platform",
-            "linux/amd64,linux/arm64",
-            "-t",
-            image_uri,
-            ".",
-        ],
-    )
-    .change_context(err2!("Failed to build image"))?;
+fn build_tag_and_push_image(service_id: &str, image_uri: &str, arch: &str) -> RResult<(), AnyErr2> {
+    let platform = match arch {
+        "amd64" => "linux/amd64",
+        "arm64" => "linux/arm64",
+        other => panic!("Unsupported architecture: {other}"),
+    };
+
+    // run_command("podman", &["system", "prune", "-a", "-f"])
+    //     .change_context(err2!("Failed to prune images"))?;
+
+    let mut args = vec![
+        "build", "-t", image_uri, ".",
+        // "--no-cache"
+    ];
+
+    if !platform.is_empty() {
+        args.push("--platform");
+        args.push(platform);
+    }
+
+    print!("Args: {:?}", args);
+    run_command("docker", &args).change_context(err2!("Failed to build image"))?;
 
     login().change_context(err2!("Failed to login to image registry"))?;
 
     info!("Pushing image to registry... (this may take a few minutes)");
 
-    run_command("podman", &["push", image_uri]).change_context(err2!("Failed to push image"))?;
+    run_command(
+        "docker",
+        &[
+            "push",
+            // "--compression-format=gzip ",
+            // "--compression-level=9 ",
+            // "--force-compression",
+            // "--tls-verify=false",
+            image_uri,
+        ],
+    )
+    .change_context(err2!("Failed to push image"))?;
 
     info!("Removing local image...");
 
-    run_command("podman", &["rmi", image_uri])
-        .change_context(err2!("Failed to remove the image"))?;
+    // run_command("docker", &["rmi", image_uri])
+    //     .change_context(err2!("Failed to remove the image"))?;
 
     Ok(())
 }
@@ -299,7 +451,7 @@ fn build_tag_and_push_image(service_id: &str, image_uri: &str) -> RResult<(), An
 fn login() -> RResult<(), AnyErr2> {
     let password = "R$G5#XFY&xVMn6IJ";
 
-    let mut cmd = Command::new("podman")
+    let mut cmd = Command::new("docker")
         .arg("login")
         .arg("https://h.nodestaking.com/")
         .arg("--username")
@@ -331,142 +483,6 @@ fn login() -> RResult<(), AnyErr2> {
     Ok(())
 }
 
-fn build_service_params_from_json(contents: &str) -> RResult<ServiceParams, AnyErr2> {
-    debug!("Contents: {:?}", contents);
-    let json: Value =
-        serde_json::from_str(&contents).expect("Failed to parse config.json contents");
-
-    debug!("JSON: {:?}", json);
-
-    let input = json
-        .get("input")
-        .ok_or(Report::new(err2!("Missing input field")))?;
-
-    let output = json
-        .get("output")
-        .ok_or(Report::new(err2!("Missing output field")))?;
-
-    let convert_required = |required: &str| -> bool {
-        match required {
-            "True" => true,
-            _ => false,
-        }
-    };
-
-    let convert_params = |params: &Value| -> RResult<Vec<Param>, AnyErr2> {
-        debug!("Converting params: {:?}", params);
-        let result = params
-            .as_array()
-            .ok_or(Report::new(err2!(format!(
-                "Expected array, found {:?}",
-                params
-            ))))?
-            .iter()
-            .map(|p| {
-                let mut param_map: serde_json::Map<String, Value> = p
-                    .as_object()
-                    .ok_or(Report::new(err2!(format!(
-                        "Expected object, found {:?}",
-                        p
-                    ))))?
-                    .clone();
-
-                let required_value =
-                    param_map
-                        .remove("required")
-                        .ok_or(Report::new(err2!(format!(
-                            "Missing required field in param: {:?}",
-                            p
-                        ))))?;
-
-                let required_str = required_value.as_str().ok_or(Report::new(err2!(format!(
-                    "Invalid required field type: {:?}",
-                    p
-                ))))?;
-
-                let required_bool = convert_required(required_str);
-
-                param_map.insert("required".to_string(), Value::Bool(required_bool));
-
-                let param: Param = serde_json::from_value(Value::Object(param_map))
-                    .change_context(err2!(format!("Failed to convert param: {:?}", p)))?;
-
-                Ok(param)
-            })
-            .collect::<RResult<Vec<Param>, AnyErr2>>();
-
-        debug!("Converted params result: {:?}", result);
-        result
-    };
-
-    let service_input_params = ServiceInputParams {
-        path: input
-            .get("path")
-            .map_or(Ok(None), |v| convert_params(v).map(Some))?,
-        query: input
-            .get("query")
-            .map_or(Ok(None), |v| convert_params(v).map(Some))?,
-        body: input
-            .get("body")
-            .map_or(Ok(None), |v| convert_params(v).map(Some))?,
-    };
-
-    debug!("Service input params: {:?}", service_input_params);
-
-    let convert_output_params = |params: &Value| -> RResult<HashMap<String, Param>, AnyErr2> {
-        debug!("Converting output params: {:?}", params);
-        let result = params
-            .as_array()
-            .ok_or(Report::new(err2!(format!(
-                "Expected array, found {:?}",
-                params
-            ))))?
-            .iter()
-            .map(|p| {
-                let mut param_map: serde_json::Map<String, Value> = p
-                    .as_object()
-                    .ok_or(Report::new(err2!(format!(
-                        "Expected object, found {:?}",
-                        p
-                    ))))?
-                    .clone();
-
-                let required_value =
-                    param_map
-                        .remove("required")
-                        .ok_or(Report::new(err2!(format!(
-                            "Missing required field in param: {:?}",
-                            p
-                        ))))?;
-
-                let required_str = required_value.as_str().ok_or(Report::new(err2!(format!(
-                    "Invalid required field type: {:?}",
-                    p
-                ))))?;
-
-                let required_bool = convert_required(required_str);
-
-                param_map.insert("required".to_string(), Value::Bool(required_bool));
-
-                let param: Param = serde_json::from_value(Value::Object(param_map))
-                    .change_context(err2!(format!("Failed to convert param: {:?}", p)))?;
-
-                Ok((param.name.clone(), param))
-            })
-            .collect::<RResult<HashMap<String, Param>, AnyErr2>>();
-
-        debug!("Converted output params result: {:?}", result);
-        result
-    };
-
-    let service_output_params: HashMap<String, Param> = convert_output_params(output)?;
-
-    Ok(ServiceParams {
-        input: service_input_params,
-        output: service_output_params,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -475,6 +491,12 @@ mod tests {
     fn test_login_success() {
         let result = login();
         assert!(result.is_ok(), "Login should succeed");
+    }
+
+    #[test]
+    fn test_init_podman() {
+        let result = ensure_podman_running();
+        assert!(result.is_ok(), "Podman should be running");
     }
 
     #[test]
@@ -496,8 +518,7 @@ mod tests {
         }
         "#;
 
-        let result =
-            build_service_params_from_json(json_data).expect("Failed to build service params");
+        let result = ServiceParams::from_json(json_data).expect("Failed to build service params");
 
         assert_eq!(result.input.path.as_ref().unwrap()[0].name, "required_foo");
         assert_eq!(result.input.path.as_ref().unwrap()[0].dtype, "string");
