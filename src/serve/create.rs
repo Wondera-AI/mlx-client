@@ -249,7 +249,7 @@ pub async fn deploy_service(conf: &TomlConfig) -> RResult<(), AnyErr2> {
 
     let service_id = format!("{}:{}", conf.service, uuid::Uuid::new_v4().to_string());
     let image_uri = format!("{}/{}", IMAGE_REGISTRY, service_id);
-    let image_uri = "h.nodestaking.com/mlx/mnist:fc517390-6af5-4a1d-a00b-b0a459d9990a".to_string();
+    // let image_uri = "h.nodestaking.com/mlx/mnist:fc517390-6af5-4a1d-a00b-b0a459d9990a".to_string();
     // let image_uri = "docker push h.nodestaking.com/mlx/mnist:1".to_string();
 
     // Build, tag and push new image
@@ -257,13 +257,13 @@ pub async fn deploy_service(conf: &TomlConfig) -> RResult<(), AnyErr2> {
         "Building, tagging and pushing new image (eta 2-5 mins): {}...",
         image_uri
     );
-    // match build_tag_and_push_image(&service_id, &image_uri, &conf.resources.arch) {
-    //     Ok(_) => info!("Image {} has been pushed to the registry.", image_uri),
-    //     Err(e) => {
-    //         error!("Failed to build, tag and push image: {}", e);
-    //         return Err(e);
-    //     }
-    // }
+    match build_tag_and_push_image(&service_id, &image_uri, &conf.resources.arch) {
+        Ok(_) => info!("Image {} has been pushed to the registry.", image_uri),
+        Err(e) => {
+            error!("Failed to build, tag and push image: {}", e);
+            return Err(e);
+        }
+    }
 
     info!("Reading schema.json...");
 
