@@ -2,12 +2,12 @@ use crate::{
     run_python_script, serve::create::ServiceParams, SERVICE_CONFIG_PATH, SERVICE_TOML_PATH,
 };
 use reqwest::Client;
-use serde::{de, Deserialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use toml::Value;
-use utils::{cmd::run_background_python_script, prelude::*, redis_manager::RedisManager};
+use utils::{prelude::*, redis_manager::RedisManager};
 
 static REDIS_URL: &str = "redis://default:MkiTVpOWFVLGLgJ7ptZ29dY80zER4cvR@redis-17902.c322.us-east-1-2.ec2.redns.redis-cloud.com:17902";
 const CALL_SERVICE_URL: &str = "http://3.132.162.86:30000/handle_request/";

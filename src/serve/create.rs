@@ -1,6 +1,5 @@
 use crate::prelude::*;
 use crate::serve::get_server_url;
-use clap::Args;
 use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
@@ -249,7 +248,7 @@ pub async fn deploy_service(conf: &TomlConfig) -> RResult<(), AnyErr2> {
 
     let service_id = format!("{}:{}", conf.service, uuid::Uuid::new_v4().to_string());
     let image_uri = format!("{}/{}", IMAGE_REGISTRY, service_id);
-    let image_uri = "h.nodestaking.com/mlx/mnist:fc517390-6af5-4a1d-a00b-b0a459d9990a".to_string();
+    // let image_uri = "h.nodestaking.com/mlx/mnist:fc517390-6af5-4a1d-a00b-b0a459d9990a".to_string();
     // let image_uri = "docker push h.nodestaking.com/mlx/mnist:1".to_string();
 
     // Build, tag and push new image
@@ -257,13 +256,13 @@ pub async fn deploy_service(conf: &TomlConfig) -> RResult<(), AnyErr2> {
         "Building, tagging and pushing new image (eta 2-5 mins): {}...",
         image_uri
     );
-    // match build_tag_and_push_image(&service_id, &image_uri, &conf.resources.arch) {
-    //     Ok(_) => info!("Image {} has been pushed to the registry.", image_uri),
-    //     Err(e) => {
-    //         error!("Failed to build, tag and push image: {}", e);
-    //         return Err(e);
-    //     }
-    // }
+    match build_tag_and_push_image(&service_id, &image_uri, &conf.resources.arch) {
+        Ok(_) => info!("Image {} has been pushed to the registry.", image_uri),
+        Err(e) => {
+            error!("Failed to build, tag and push image: {}", e);
+            return Err(e);
+        }
+    }
 
     info!("Reading schema.json...");
 
@@ -328,79 +327,7 @@ pub async fn deploy_service(conf: &TomlConfig) -> RResult<(), AnyErr2> {
     Ok(())
 }
 
-fn start_podman_machine() -> RResult<(), AnyErr2> {
-    info!("Initializing Podman machine...");
-    if let Err(e) = run_command(
-        "podman",
-        &["machine", "init", "--cpus", "4", "--memory", "10240"],
-    ) {
-        if e.to_string().contains("VM already exists") {
-            info!("Podman machine already exists, skipping initialization.");
-        } else {
-            debug!("Podman machine already started");
-        }
-    }
-
-    info!("Starting Podman machine...");
-    if let Err(e) = run_command("podman", &["machine", "start"]) {
-        if e.to_string().contains("VM already running") {
-            info!("Podman machine already running, skipping start.");
-        } else {
-            debug!("Podman machine already started");
-        }
-    }
-
-    Ok(())
-}
-
-fn check_podman_connection() -> RResult<(), AnyErr2> {
-    let output = Command::new("podman")
-        .args(&["system", "connection", "list"])
-        .output()
-        .change_context(err2!("Failed to check Podman connection"))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    if stdout.contains("default") {
-        info!("Podman connection verified.");
-        return Ok(());
-    } else {
-        return Err(Report::new(err2!("Podman connection not found")));
-    }
-}
-
-fn ensure_podman_running() -> RResult<(), AnyErr2> {
-    if run_command("podman", &["--version"]).is_ok() {
-        info!("Podman is already installed.");
-    } else {
-        if cfg!(target_os = "linux") {
-            info!("Installing Podman on Linux...");
-            run_command("sudo", &["apt-get", "update"])
-                .change_context(err2!("Failed to update"))?;
-            run_command("sudo", &["apt-get", "-y", "install", "podman"])
-                .change_context(err2!("Failed to install podman"))?;
-        } else if cfg!(target_os = "macos") {
-            info!("Installing Podman on macOS...");
-            run_command("brew", &["install", "podman"])
-                .change_context(err2!("Failed to install"))?;
-        } else {
-            panic!("Unsupported operating system");
-        }
-    }
-
-    match check_podman_connection() {
-        Ok(_) => {
-            start_podman_machine()
-            // check_podman_connection()
-        }
-        Err(_) => {
-            start_podman_machine()?;
-            check_podman_connection()
-        }
-    }
-}
-
-fn build_tag_and_push_image(service_id: &str, image_uri: &str, arch: &str) -> RResult<(), AnyErr2> {
+fn build_tag_and_push_image(_service_id: &str, image_uri: &str, arch: &str) -> RResult<(), AnyErr2> {
     let platform = match arch {
         "amd64" => "linux/amd64",
         "arm64" => "linux/arm64",
@@ -491,12 +418,6 @@ mod tests {
     fn test_login_success() {
         let result = login();
         assert!(result.is_ok(), "Login should succeed");
-    }
-
-    #[test]
-    fn test_init_podman() {
-        let result = ensure_podman_running();
-        assert!(result.is_ok(), "Podman should be running");
     }
 
     #[test]
