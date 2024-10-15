@@ -200,7 +200,7 @@ fn main() {
     tracing_subscriber::registry()
         .with(fmt::layer().with_writer(std::io::stdout))
         .with(EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".into()),
         ))
         .init();
 

@@ -49,7 +49,7 @@ pub async fn jobs_service(service_name: &str) -> RResult<(), AnyErr2> {
             if !end_time_str.is_empty() {
                 if let Ok(end_time) = DateTime::parse_from_rfc3339(&end_time_str) {
                     let duration = end_time.signed_duration_since(start_time);
-                    format!("{} seconds", duration.num_seconds())
+                    format!("{} ms", duration.num_milliseconds())
                 } else {
                     "-".to_string()
                 }

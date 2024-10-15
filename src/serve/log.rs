@@ -75,7 +75,7 @@ pub async fn log_service(
     if let Some(response) = log_data.get("response") {
         let mut response_table = Table::new();
         response_table.set_header(vec![
-            Cell::new("Server Response").add_attribute(comfy_table::Attribute::Bold)
+            Cell::new("Service Response").add_attribute(comfy_table::Attribute::Bold)
         ]);
 
         let pretty_response = match response.as_str() {
@@ -123,7 +123,7 @@ pub async fn log_service(
             .map_err(|_| err2!("Failed to parse ended_at"))?;
 
         let duration = ended_at - started_at;
-        let elapsed_time = format!("{} milliseconds", duration.num_milliseconds());
+        let elapsed_time = format!("{} ms", duration.num_milliseconds());
 
         timer_table.add_row(vec![
             Cell::new("Elapsed Time"),
