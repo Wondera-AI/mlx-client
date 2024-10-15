@@ -566,11 +566,11 @@ async fn check_for_update() {
 
         write_current_commit_hash(&latest_hash).expect("Failed to write the latest commit hash");
 
-        info!("Update complete, restarting...");
+        info!("Update complete, running mlx command now...");
 
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        let _ = run_command("mlx", &args_str);
+        // let args: Vec<String> = std::env::args().skip(1).collect();
+        // let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        // let _ = run_command("mlx", &args_str);
     }
 }
 
