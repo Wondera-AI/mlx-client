@@ -1,4 +1,4 @@
-use clap::{Args, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use std::{path::Path, process::Command};
 mod prelude;
 mod serve;
@@ -23,7 +23,7 @@ static CONFIG_PATH: &str = "pyproject.toml";
 static SERVICE_CONFIG_PATH: &str = "schema.json";
 static SERVICE_TOML_PATH: &str = "mlx.toml";
 static RAY_ADDRESS: &str = "auto";
-static SERVER_ADDRESS: &str = "http://3.132.162.86:30000";
+// static SERVER_ADDRESS: &str = "http://3.132.162.86:30000";
 
 #[derive(Parser)]
 #[command(name = "MLX")]
@@ -206,6 +206,8 @@ fn main() {
 
     let cli = Cli::parse();
 
+    debug!("Check debug level");
+
     match &cli.command {
         Commands::Train { action } => match action {
             TrainActions::New { name } => {
@@ -353,7 +355,7 @@ fn main() {
                     "Cloning the training repo to {}",
                     target_path.to_str().unwrap()
                 );
-                run_command(
+                let _ = run_command(
                     "git",
                     &["clone", PY_INF_REPO_URL, target_path.to_str().unwrap()],
                 );
@@ -365,7 +367,7 @@ fn main() {
 
                 // Install project dependencies using pdm
                 info!("Installing project dependencies...");
-                run_command("pdm", &["install"]);
+                let _ = run_command("pdm", &["install"]);
 
                 info!("Setup complete for {}", name);
             }
@@ -423,18 +425,18 @@ fn main() {
             ServeActions::Ls { name, pointers } => {
                 info!("Listing available services");
 
-                list_services(name.as_deref(), *pointers);
+                let _ = list_services(name.as_deref(), *pointers);
             }
             ServeActions::Rm { name, version, all } => {
                 if let Some(version) = version {
                     info!("Removing service {} version {}", name, version);
-                    delete_service(name, Some(*version));
+                    let _ = delete_service(name, Some(*version));
                 } else {
                     if !all {
                         error!("Please specify a version to remove or use the --all flag to remove all versions of the service");
                     } else {
                         info!("Removing all versions of service {}", name);
-                        delete_service(name, None);
+                        let _ = delete_service(name, None);
                     }
                 }
             }
@@ -459,7 +461,7 @@ fn main() {
             ServeActions::Jobs { name } => {
                 info!("Viewing jobs for service {}", name);
 
-                jobs_service(name);
+                let _ = jobs_service(name);
             }
         },
     }
@@ -503,17 +505,17 @@ fn py_env_checker(install: bool) -> bool {
     if !pdm_installed {
         info!("Installing PDM...");
         if cfg!(target_os = "linux") {
-            run_command("sudo apt install python3-venv", &[]);
+            let _ = run_command("sudo apt install python3-venv", &[]);
         }
-        run_command(
+        let _ = run_command(
             "curl -sSL https://pdm-project.org/install-pdm.py | python3 -",
             &[],
         );
 
         let command = r"echo 'export PATH=$PATH:/usr/local/bin' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
-        run_command(command, &[]);
+        let _ = run_command(command, &[]);
         let command = r"echo 'export PATH=/root/.local/bin:$PATH' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
-        run_command(command, &[]);
+        let _ = run_command(command, &[]);
     }
 
     info!("Python3.11 & PDM all ok");
