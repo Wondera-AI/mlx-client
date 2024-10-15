@@ -19,7 +19,7 @@ use xp::stream_logs;
 static APP_NAME: &str = "mlx-client";
 static TRAIN_REPO_URL: &str = "https://github.com/Wondera-AI/mlx.git";
 static PY_INF_REPO_URL: &str = "https://github.com/Wondera-AI/mlx-pyinf.git";
-static CLIENT_REPO_URL: &str = "https://api.github.com/repos/Wondera-AI/mlx/commits/main";
+static CLIENT_REPO_URL: &str = "https://api.github.com/repos/Wondera-AI/mlx-client/commits/main";
 static SCRIPT_PATH: &str = "main.py";
 static CONFIG_PATH: &str = "pyproject.toml";
 static SERVICE_CONFIG_PATH: &str = "schema.json";
