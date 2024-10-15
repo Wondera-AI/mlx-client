@@ -8,6 +8,7 @@ use serve::{
     delete_service, deploy_service, jobs_service, list_services, log_service, run_tests,
     scale_service, ScaleServiceConf, TomlConfig,
 };
+use tokio::runtime::Runtime;
 use tracing_subscriber::{filter::EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use utils::{
     cmd::{run_command, run_python_script},
@@ -203,7 +204,7 @@ async fn main() {
     tracing_subscriber::registry()
         .with(fmt::layer().with_writer(std::io::stdout))
         .with(EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "debug".into()),
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
         ))
         .init();
 
@@ -395,10 +396,8 @@ async fn main() {
                     assert_files_exist(vec![SERVICE_CONFIG_PATH]);
                 }
 
-                tokio::runtime::Runtime::new().unwrap().block_on(async {
-                    let res = run_tests(test.clone(), *remote);
-                    res.await.unwrap();
-                });
+                let res = run_tests(test.clone(), *remote).await;
+                res.unwrap();
             }
             ServeActions::Deploy => {
                 info!("Deploying the Service to a MLX cluster...");
@@ -543,7 +542,7 @@ fn py_env_checker(install: bool) -> bool {
 }
 
 async fn check_for_update() {
-    debug!("Checking mlx-client for updates...");
+    debug!("Checking mlx-client for updates :)...");
 
     let latest_hash = fetch_latest_commit_hash().await.unwrap();
 
