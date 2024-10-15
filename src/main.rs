@@ -423,7 +423,7 @@ async fn main() {
                     conf
                 };
 
-                let _ = deploy_service(&conf);
+                let _ = deploy_service(&conf).await;
             }
             ServeActions::Ls { name, pointers } => {
                 info!("Listing available services");
@@ -542,7 +542,7 @@ fn py_env_checker(install: bool) -> bool {
 }
 
 async fn check_for_update() {
-    info!("Checking mlx-client for updates :)...");
+    info!("Checking mlx-client for updates ...");
 
     let latest_hash = fetch_latest_commit_hash().await.unwrap();
 
@@ -555,7 +555,7 @@ async fn check_for_update() {
     debug!("Latest hash: {}", latest_hash);
 
     if latest_hash != current_hash {
-        info!("New version detected, updating...");
+        info!("New version of mlx-client detected :) updating...");
         // Run the install.sh script to update
         std::process::Command::new("bash")
             .arg("-c")

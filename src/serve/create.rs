@@ -241,7 +241,7 @@ pub struct Param {
     pub required: bool,
 }
 
-#[tokio::main]
+// #[tokio::main]
 pub async fn deploy_service(conf: &TomlConfig) -> RResult<(), AnyErr2> {
     // ensure podman CLI is installed
     // ensure_podman_running().change_context(err2!("Failed to ensure Podman is running"))?;
