@@ -542,7 +542,7 @@ fn py_env_checker(install: bool) -> bool {
 }
 
 async fn check_for_update() {
-    debug!("Checking mlx-client for updates :)...");
+    info!("Checking mlx-client for updates :)...");
 
     let latest_hash = fetch_latest_commit_hash().await.unwrap();
 
