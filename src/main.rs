@@ -514,18 +514,17 @@ fn py_env_checker(install: bool) -> bool {
             "curl -sSL https://pdm-project.org/install-pdm.py | python3 -",
             &[],
         );
-
-        // ignore panics
-        let command = r"echo 'export PATH=$PATH:/usr/local/bin' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
-        let _ = std::panic::catch_unwind(|| {
-            let _ = run_command(command, &[]);
-        });
-
-        let command = r"echo 'export PATH=/root/.local/bin:$PATH' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
-        let _ = std::panic::catch_unwind(|| {
-            let _ = run_command(command, &[]);
-        });
     }
+    // ignore panics
+    let command = r"echo 'export PATH=$PATH:/usr/local/bin' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
+    let _ = std::panic::catch_unwind(|| {
+        let _ = run_command(command, &[]);
+    });
+
+    let command = r"echo 'export PATH=/root/.local/bin:$PATH' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
+    let _ = std::panic::catch_unwind(|| {
+        let _ = run_command(command, &[]);
+    });
 
     info!("Python3.11 & PDM all ok");
 
