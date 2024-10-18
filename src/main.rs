@@ -502,7 +502,6 @@ fn py_env_checker(install: bool) -> bool {
         }
     }
 
-    // Install pdm
     let pdm_installed = Command::new("pdm").arg("info").output().is_ok();
 
     if !pdm_installed {
@@ -515,24 +514,12 @@ fn py_env_checker(install: bool) -> bool {
             &[],
         );
     }
-    // ignore panics
-    // let command = r"echo 'export PATH=$PATH:/usr/local/bin' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
-    // let _ = std::panic::catch_unwind(|| {
-    //     let _ = run_command(command, &[]);
-    // });
-
-    // let command = r"echo 'export PATH=/root/.local/bin:$PATH' | sudo tee /etc/profile.d/pdm.sh > /dev/null && source /etc/profile.d/pdm.sh";
-    // let _ = std::panic::catch_unwind(|| {
-    //     let _ = run_command(command, &[]);
-    // });
     let path_setup = r"
     echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc;
     echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.zshrc;
-    echo 'export PATH=$HOME/.local/bin:$PATH' | sudo tee /etc/profile.d/pdm.sh;
-    source ~/.bashrc || source ~/.zshrc || source /etc/profile.d/pdm.sh;
-";
+    export PATH=$HOME/.local/bin:$PATH;
+    ";
     let _ = run_command(path_setup, &[]);
-
     info!("Python3.11 & PDM all ok");
 
     if install {
