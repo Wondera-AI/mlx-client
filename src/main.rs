@@ -25,6 +25,7 @@ static SCRIPT_PATH: &str = "main.py";
 static CONFIG_PATH: &str = "pyproject.toml";
 static SERVICE_CONFIG_PATH: &str = "schema.json";
 static SERVICE_TOML_PATH: &str = "mlx.toml";
+static SERVICE_DOCKERFILE_PATH: &str = "Dockerfile";
 static RAY_ADDRESS: &str = "auto";
 // static SERVER_ADDRESS: &str = "http://3.132.162.86:30000";
 
@@ -407,6 +408,7 @@ async fn main() {
                     CONFIG_PATH,
                     SERVICE_CONFIG_PATH,
                     SERVICE_TOML_PATH,
+                    SERVICE_DOCKERFILE_PATH,
                 ]);
 
                 py_env_checker(false);
@@ -528,7 +530,7 @@ fn py_env_checker(install: bool) -> bool {
         Command::new("pdm")
             .arg("install")
             .status()
-            .unwrap_or_else(|_| panic!("Failed to install PDM dependencies"));
+            .unwrap_or_else(|_| panic!("IF THIS FAILS, YOUR PYTHON SETUP IS UNIQUE TO ALL OTHER WONDERA MACHINE - CALL ALE TO SUPPORT YOUR SETUP"));
     }
 
     return true;
