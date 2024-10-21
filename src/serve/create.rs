@@ -327,7 +327,11 @@ pub async fn deploy_service(conf: &TomlConfig) -> RResult<(), AnyErr2> {
     Ok(())
 }
 
-fn build_tag_and_push_image(_service_id: &str, image_uri: &str, arch: &str) -> RResult<(), AnyErr2> {
+fn build_tag_and_push_image(
+    _service_id: &str,
+    image_uri: &str,
+    arch: &str,
+) -> RResult<(), AnyErr2> {
     let platform = match arch {
         "amd64" => "linux/amd64",
         "arm64" => "linux/arm64",
@@ -338,7 +342,7 @@ fn build_tag_and_push_image(_service_id: &str, image_uri: &str, arch: &str) -> R
     //     .change_context(err2!("Failed to prune images"))?;
 
     let mut args = vec![
-        "build", "-t", image_uri, ".",
+        "docker", "build", "-t", image_uri, ".",
         // "--no-cache"
     ];
 
@@ -348,7 +352,7 @@ fn build_tag_and_push_image(_service_id: &str, image_uri: &str, arch: &str) -> R
     }
 
     print!("Args: {:?}", args);
-    run_command("docker", &args).change_context(err2!("Failed to build image"))?;
+    run_command("sudo", &args).change_context(err2!("Failed to build image"))?;
 
     login().change_context(err2!("Failed to login to image registry"))?;
 
