@@ -6,9 +6,8 @@ mod xp;
 pub use reqwest::Method;
 use serve::{
     delete_service, deploy_service, jobs_service, list_services, log_service, run_tests,
-    scale_service, ScaleServiceConf, TomlConfig,
+    scale_service, ResourceRequest, ScaleServiceConf, ServiceConfig,
 };
-use tokio::runtime::Runtime;
 use tracing_subscriber::{filter::EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use utils::{
     cmd::{run_command, run_python_script},
@@ -23,7 +22,7 @@ static PY_INF_REPO_URL: &str = "https://github.com/Wondera-AI/mlx-pyinf.git";
 static CLIENT_REPO_URL: &str = "https://api.github.com/repos/Wondera-AI/mlx-client/commits/main";
 static SCRIPT_PATH: &str = "main.py";
 static CONFIG_PATH: &str = "pyproject.toml";
-static SERVICE_CONFIG_PATH: &str = "schema.json";
+static SERVICE_SCHEMA_PATH: &str = "schema.json";
 static SERVICE_TOML_PATH: &str = "mlx.toml";
 static SERVICE_DOCKERFILE_PATH: &str = "Dockerfile";
 static RAY_ADDRESS: &str = "auto";
@@ -131,6 +130,8 @@ enum DataActions {
 
 #[derive(Subcommand)]
 enum ServeActions {
+    #[command(about = "Initialize the service")]
+    Init,
     #[command(about = "Start a new service project cloning the PINF template")]
     New {
         #[arg(help = "Name of the service")]
@@ -144,7 +145,16 @@ enum ServeActions {
         remote: bool,
     },
     #[command(about = "Deploy the server to a service")]
-    Deploy,
+    Deploy {
+        #[arg(long, help = "Docker image proxy", default_value = "false")]
+        proxy: bool,
+
+        #[arg(long, help = "Docker image name")]
+        image: Option<String>,
+
+        #[arg(long, help = "Service name")]
+        name: Option<String>,
+    },
     // (DeployServiceConf),
     #[command(about = "List the available services")]
     Ls {
@@ -352,6 +362,18 @@ async fn main() {
             }
         },
         Commands::Serve { action } => match action {
+            ServeActions::Init => {
+                info!("Initializing the service");
+
+                // Check if Python 3.11 is installed, if not install it
+                py_env_checker(false);
+
+                // Install project dependencies using pdm
+                info!("Installing project dependencies...");
+                let _ = run_command("pdm", &["install"]);
+
+                info!("Setup complete");
+            }
             ServeActions::New { name } => {
                 info!("Creating new service: {}", name);
 
@@ -387,45 +409,67 @@ async fn main() {
                 assert_files_exist(vec![
                     SCRIPT_PATH,
                     CONFIG_PATH,
-                    SERVICE_CONFIG_PATH,
+                    SERVICE_SCHEMA_PATH,
                     SERVICE_TOML_PATH,
                 ]);
 
                 if !remote {
                     py_env_checker(true);
                     run_python_script("main.py", Some(&["--build", "1"]));
-                    assert_files_exist(vec![SERVICE_CONFIG_PATH]);
+                    assert_files_exist(vec![SERVICE_SCHEMA_PATH]);
                 }
 
                 let res = run_tests(test.clone(), *remote).await;
                 res.unwrap();
             }
-            ServeActions::Deploy => {
-                info!("Deploying the Service to a MLX cluster...");
-
-                assert_files_exist(vec![
-                    SCRIPT_PATH,
-                    CONFIG_PATH,
-                    SERVICE_CONFIG_PATH,
-                    SERVICE_TOML_PATH,
-                    SERVICE_DOCKERFILE_PATH,
-                ]);
-
-                py_env_checker(false);
-
-                run_python_script("main.py", Some(&["--build", "1"]));
-
-                assert_files_exist(vec![SERVICE_CONFIG_PATH]);
-
-                let conf: TomlConfig = {
-                    let toml_data = std::fs::read_to_string(SERVICE_TOML_PATH)
-                        .expect("Failed to read mlx.toml file");
-                    let conf: TomlConfig =
-                        toml::from_str(&toml_data).expect("Failed to parse mlx.toml");
-                    conf
+            ServeActions::Deploy { proxy, image, name } => {
+                let mut conf: ServiceConfig = if std::path::Path::new(SERVICE_TOML_PATH).exists() {
+                    info!("Service mlx.toml exists, parsing file...");
+                    ServiceConfig::from_toml_file(SERVICE_TOML_PATH).unwrap()
+                } else {
+                    info!("Service mlx.toml does not exist");
+                    if !*proxy {
+                        error!("Service mlx.toml must exist when not proxy");
+                        std::process::exit(1);
+                    }
+                    if image.is_none() || name.is_none() {
+                        error!("Error: Both `image` and `name` must be provided when `proxy` is enabled.");
+                        std::process::exit(1);
+                    }
+                    ServiceConfig::new(
+                        name.clone()
+                            .expect("Name must be provided when `proxy` is enabled."),
+                        ResourceRequest::default(),
+                        None,
+                        None,
+                        true,
+                        Some(
+                            image
+                                .clone()
+                                .expect("Image must be provided when `proxy` is enabled."),
+                        ),
+                    )
                 };
 
-                let _ = deploy_service(&conf).await;
+                if *proxy {
+                    info!("Deploying the Service to MLX as Docker proxy...");
+                } else {
+                    info!("Deploying the Service to a MLX...");
+                    assert_files_exist(vec![
+                        SCRIPT_PATH,
+                        CONFIG_PATH,
+                        SERVICE_TOML_PATH,
+                        SERVICE_DOCKERFILE_PATH,
+                    ]);
+
+                    py_env_checker(false);
+
+                    run_python_script("main.py", Some(&["--build", "1"]));
+
+                    assert_files_exist(vec![SERVICE_SCHEMA_PATH]);
+                }
+
+                let _ = deploy_service(&mut conf, *proxy).await;
             }
             ServeActions::Ls { name, pointers } => {
                 info!("Listing available services");

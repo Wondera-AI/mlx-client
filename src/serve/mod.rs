@@ -1,5 +1,5 @@
-pub mod create;
 pub mod delete;
+pub mod deploy;
 pub mod jobs;
 pub mod list;
 pub mod log;
@@ -7,8 +7,8 @@ pub mod run;
 pub mod scale;
 
 // re-exports crud functions
-pub use create::*;
 pub use delete::*;
+pub use deploy::*;
 pub use jobs::*;
 pub use list::*;
 pub use log::*;

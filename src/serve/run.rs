@@ -1,5 +1,5 @@
 use crate::{
-    run_python_script, serve::create::ServiceParams, SERVICE_CONFIG_PATH, SERVICE_TOML_PATH,
+    run_python_script, serve::deploy::ServiceSchema, SERVICE_SCHEMA_PATH, SERVICE_TOML_PATH,
 };
 use reqwest::Client;
 use serde::Deserialize;
@@ -54,12 +54,12 @@ pub async fn run_tests(test_name: Option<String>, remote: bool) -> RResult<(), A
     };
 
     {
-        let schema_json = std::fs::read_to_string(SERVICE_CONFIG_PATH)
+        let schema_json = std::fs::read_to_string(SERVICE_SCHEMA_PATH)
             .change_context(err2!("Failed to read service schema file"))?;
         validate_tests(
             tests_to_run.clone(),
             &config,
-            &ServiceParams::from_json(&schema_json).expect("Failed to parse service schema"),
+            &ServiceSchema::from_json(&schema_json).expect("Failed to parse service schema"),
         );
     }
 
@@ -134,7 +134,7 @@ pub async fn run_tests(test_name: Option<String>, remote: bool) -> RResult<(), A
     Ok(())
 }
 
-fn validate_tests(tests: Vec<String>, config: &TestConfig, service_params: &ServiceParams) {
+fn validate_tests(tests: Vec<String>, config: &TestConfig, service_params: &ServiceSchema) {
     // Validate the test cases
     for test in &tests {
         if let Some(test_spec) = config.test.get(test) {
@@ -241,7 +241,7 @@ mod tests {
 
     #[rstest::fixture]
     fn setup_files() -> (TempFile, TempFile) {
-        let schema_file = TempFile::new(&SERVICE_CONFIG_PATH, SCHEMA_JSON);
+        let schema_file = TempFile::new(&SERVICE_SCHEMA_PATH, SCHEMA_JSON);
         let toml_file = TempFile::new(&SERVICE_TOML_PATH, TEST_TOML);
         (schema_file, toml_file)
     }
