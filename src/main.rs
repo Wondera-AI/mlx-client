@@ -222,7 +222,7 @@ async fn main() {
     let cli = Cli::parse();
 
     debug!("Check debug level");
-    check_for_update().await;
+    // check_for_update().await;
 
     match &cli.command {
         Commands::Train { action } => match action {
@@ -423,34 +423,6 @@ async fn main() {
                 res.unwrap();
             }
             ServeActions::Deploy { proxy, image, name } => {
-                let mut conf: ServiceConfig = if std::path::Path::new(SERVICE_TOML_PATH).exists() {
-                    info!("Service mlx.toml exists, parsing file...");
-                    ServiceConfig::from_toml_file(SERVICE_TOML_PATH).unwrap()
-                } else {
-                    info!("Service mlx.toml does not exist");
-                    if !*proxy {
-                        error!("Service mlx.toml must exist when not proxy");
-                        std::process::exit(1);
-                    }
-                    if image.is_none() || name.is_none() {
-                        error!("Error: Both `image` and `name` must be provided when `proxy` is enabled.");
-                        std::process::exit(1);
-                    }
-                    ServiceConfig::new(
-                        name.clone()
-                            .expect("Name must be provided when `proxy` is enabled."),
-                        ResourceRequest::default(),
-                        None,
-                        None,
-                        true,
-                        Some(
-                            image
-                                .clone()
-                                .expect("Image must be provided when `proxy` is enabled."),
-                        ),
-                    )
-                };
-
                 if *proxy {
                     info!("Deploying the Service to MLX as Docker proxy...");
                 } else {
@@ -469,7 +441,7 @@ async fn main() {
                     assert_files_exist(vec![SERVICE_SCHEMA_PATH]);
                 }
 
-                let _ = deploy_service(&mut conf, *proxy).await;
+                let _ = deploy_service(*proxy, image.clone(), name.clone()).await;
             }
             ServeActions::Ls { name, pointers } => {
                 info!("Listing available services");

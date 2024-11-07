@@ -1,7 +1,9 @@
 use crate::prelude::*;
-use crate::serve::deploy::{build_tag_and_push_image, ServiceConfig, ServiceSchema};
+use crate::serve::deploy::{
+    build_tag_and_push_image, ResourceRequest, ServiceConfig, ServiceSchema,
+};
 use crate::serve::get_server_url;
-use crate::SERVICE_SCHEMA_PATH;
+use crate::{SERVICE_SCHEMA_PATH, SERVICE_TOML_PATH};
 use serde_json::json;
 use utils::{
     endpoints::{Endpoint, Method},
@@ -10,7 +12,39 @@ use utils::{
 
 static IMAGE_REGISTRY: &str = "h.nodestaking.com/mlx";
 
-pub async fn deploy_service(conf: &mut ServiceConfig, is_proxy: bool) -> RResult<(), AnyErr2> {
+pub async fn deploy_service(
+    is_proxy: bool,
+    name: Option<String>,
+    image: Option<String>,
+) -> RResult<(), AnyErr2> {
+    let mut conf: ServiceConfig = if std::path::Path::new(SERVICE_TOML_PATH).exists() {
+        info!("Service mlx.toml exists, parsing file...");
+        ServiceConfig::from_toml_file(SERVICE_TOML_PATH).unwrap()
+    } else {
+        info!("Service mlx.toml does not exist");
+        if !is_proxy {
+            error!("Service mlx.toml must exist when `proxy` is not enabled.");
+            std::process::exit(1);
+        }
+        if image.is_none() || name.is_none() {
+            error!("Error: Both `image` and `name` must be provided when `proxy` is enabled.");
+            std::process::exit(1);
+        }
+        ServiceConfig::new(
+            name.clone()
+                .expect("Name must be provided when `proxy` is enabled."),
+            ResourceRequest::default(),
+            None,
+            None,
+            true,
+            Some(
+                image
+                    .clone()
+                    .expect("Image must be provided when `proxy` is enabled."),
+            ),
+        )
+    };
+
     if !is_proxy {
         let service_id = format!("{}:{}", conf.service, uuid::Uuid::new_v4().to_string());
         let image_uri = format!("{}/{}", IMAGE_REGISTRY, service_id);
@@ -35,11 +69,11 @@ pub async fn deploy_service(conf: &mut ServiceConfig, is_proxy: bool) -> RResult
 
     info!("Building ServiceSchema...");
     let service_schema: ServiceSchema = if is_proxy {
+        ServiceSchema::default()
+    } else {
         ServiceSchema::from_json_file(SERVICE_SCHEMA_PATH)
             .await
             .change_context(err2!("Failed to build service params"))?
-    } else {
-        ServiceSchema::default()
     };
     debug!("ServiceSchema: {:?}", service_schema);
 
