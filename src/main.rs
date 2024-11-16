@@ -154,6 +154,18 @@ enum ServeActions {
 
         #[arg(long, help = "Service name")]
         name: Option<String>,
+
+        #[arg(long, help = "Environment variables as string of dict")]
+        env: Option<String>,
+
+        #[arg(long, help = "CPU garuanteed resources")]
+        cpu_requests: Option<f32>,
+
+        #[arg(long, help = "mem garuanteed resources")]
+        mem_requests: Option<u32>,
+
+        #[arg(long, help = "GPU garuanteed resources")]
+        gpu_requests: Option<u32>,
     },
     // (DeployServiceConf),
     #[command(about = "List the available services")]
@@ -422,7 +434,15 @@ async fn main() {
                 let res = run_tests(test.clone(), *remote).await;
                 res.unwrap();
             }
-            ServeActions::Deploy { proxy, image, name } => {
+            ServeActions::Deploy {
+                proxy,
+                image,
+                name,
+                env,
+                gpu_requests,
+                cpu_requests,
+                mem_requests,
+            } => {
                 if *proxy {
                     info!("Deploying the Service to MLX as Docker proxy...");
                 } else {
@@ -441,7 +461,16 @@ async fn main() {
                     assert_files_exist(vec![SERVICE_SCHEMA_PATH]);
                 }
 
-                let _ = deploy_service(*proxy, image.clone(), name.clone()).await;
+                let _ = deploy_service(
+                    *proxy,
+                    name.clone(),
+                    image.clone(),
+                    env.clone(),
+                    gpu_requests.clone(),
+                    cpu_requests.clone(),
+                    mem_requests.clone(),
+                )
+                .await;
             }
             ServeActions::Ls { name, pointers } => {
                 info!("Listing available services");

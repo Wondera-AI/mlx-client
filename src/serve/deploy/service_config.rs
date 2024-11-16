@@ -3,23 +3,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utils::prelude::*;
 
-const DEFAULT_CPU_REQUEST: f32 = 0.5;
-const DEFAULT_GPU_REQUEST: u32 = 1; // 0 or 1
-const DEFAULT_MEMORY_REQUEST: u32 = 512; // 512Mi
+const DEFAULT_CPU_REQUEST: f32 = 1.0;
+const DEFAULT_GPU_REQUEST: u32 = 0; // 0 or 1
+const DEFAULT_MEMORY_REQUEST: u32 = 128; // 1Gi
 const DEFAULT_CPU_LIMIT: u32 = 4;
 const DEFAULT_GPU_LIMIT: u32 = 4;
-const DEFAULT_MEMORY_LIMIT: u32 = 4096; // 4Gi
+const DEFAULT_MEMORY_LIMIT: u32 = 512; // 4Gi
 const DEFAULT_CONCURRENT_JOBS: u32 = 20;
-const DEFAULT_ORCHESTRATOR: &str = "wondera";
-const DEFAULT_ARCH: &str = "amd64";
+const DEFAULT_ORCHESTRATOR: &str = "kube";
+const DEFAULT_ARCH: &str = "arm64";
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ResourceRequest {
-    cpu_requests: Option<f32>,
+    pub cpu_requests: Option<f32>,
 
-    gpu_requests: Option<u32>,
+    pub gpu_requests: Option<u32>,
 
-    memory_requests: Option<u32>,
+    pub memory_requests: Option<u32>,
 
     cpu_limit: Option<u32>,
 

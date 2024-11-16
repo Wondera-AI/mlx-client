@@ -4,7 +4,10 @@ use crate::serve::deploy::{
 };
 use crate::serve::get_server_url;
 use crate::{SERVICE_SCHEMA_PATH, SERVICE_TOML_PATH};
+use k8s_openapi::api::resource;
 use serde_json::json;
+use std::collections::HashMap;
+use std::env;
 use utils::{
     endpoints::{Endpoint, Method},
     errors::prelude::*,
@@ -16,12 +19,27 @@ pub async fn deploy_service(
     is_proxy: bool,
     name: Option<String>,
     image: Option<String>,
+    env: Option<String>,
+    gpu_requests: Option<u32>,
+    cpu_requests: Option<f32>,
+    mem_requests: Option<u32>,
 ) -> RResult<(), AnyErr2> {
     let mut conf: ServiceConfig = if std::path::Path::new(SERVICE_TOML_PATH).exists() {
         info!("Service mlx.toml exists, parsing file...");
         ServiceConfig::from_toml_file(SERVICE_TOML_PATH).unwrap()
     } else {
         info!("Service mlx.toml does not exist");
+        let mut resources = ResourceRequest::default();
+        if gpu_requests.is_some() {
+            resources.gpu_requests = gpu_requests
+        }
+        if cpu_requests.is_some() {
+            resources.cpu_requests = cpu_requests
+        }
+        if mem_requests.is_some() {
+            resources.memory_requests = mem_requests
+        }
+
         if !is_proxy {
             error!("Service mlx.toml must exist when `proxy` is not enabled.");
             std::process::exit(1);
@@ -30,11 +48,22 @@ pub async fn deploy_service(
             error!("Error: Both `image` and `name` must be provided when `proxy` is enabled.");
             std::process::exit(1);
         }
+        // let mut env_map = None;
+        // if env.is_some() {
+        //     env_map =
+        //         serde_json::from_str(&env.unwrap()).change_context(err2!("Failed to parse env"))?;
+        // }
+        let env_map = env
+            .map(|env_str| {
+                serde_json::from_str(&env_str).change_context(err2!("Failed to parse env"))
+            })
+            .transpose()?;
+
         ServiceConfig::new(
             name.clone()
                 .expect("Name must be provided when `proxy` is enabled."),
             ResourceRequest::default(),
-            None,
+            env_map,
             None,
             true,
             Some(
