@@ -23,6 +23,7 @@ pub async fn deploy_service(
     gpu_requests: Option<u32>,
     cpu_requests: Option<f32>,
     mem_requests: Option<u32>,
+    internal_port: Option<i32>,
 ) -> RResult<(), AnyErr2> {
     let mut conf: ServiceConfig = if std::path::Path::new(SERVICE_TOML_PATH).exists() {
         info!("Service mlx.toml exists, parsing file...");
@@ -71,6 +72,7 @@ pub async fn deploy_service(
                     .clone()
                     .expect("Image must be provided when `proxy` is enabled."),
             ),
+            internal_port,
         )
     };
 

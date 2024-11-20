@@ -5,10 +5,10 @@ use utils::prelude::*;
 
 const DEFAULT_CPU_REQUEST: f32 = 1.0;
 const DEFAULT_GPU_REQUEST: u32 = 0; // 0 or 1
-const DEFAULT_MEMORY_REQUEST: u32 = 128; // 1Gi
+const DEFAULT_MEMORY_REQUEST: u32 = 1; // 1Gi
 const DEFAULT_CPU_LIMIT: u32 = 4;
 const DEFAULT_GPU_LIMIT: u32 = 4;
-const DEFAULT_MEMORY_LIMIT: u32 = 512; // 4Gi
+const DEFAULT_MEMORY_LIMIT: u32 = 2; // 2Gi
 const DEFAULT_CONCURRENT_JOBS: u32 = 20;
 const DEFAULT_ORCHESTRATOR: &str = "kube";
 const DEFAULT_ARCH: &str = "arm64";
@@ -82,6 +82,8 @@ pub struct ServiceConfig {
     is_proxy: Option<bool>, // default to false if not provided
 
     pub image_uri: Option<String>,
+
+    pub internal_port: Option<i32>,
 }
 
 impl ServiceConfig {
@@ -92,6 +94,7 @@ impl ServiceConfig {
         orchestrator: Option<String>,
         is_proxy: bool,
         image_uri: Option<String>,
+        internal_port: Option<i32>,
     ) -> Self {
         Self {
             service,
@@ -100,6 +103,7 @@ impl ServiceConfig {
             orchestrator: Some(orchestrator.unwrap_or(DEFAULT_ORCHESTRATOR.to_string())),
             is_proxy: Some(is_proxy),
             image_uri,
+            internal_port,
         }
     }
 
@@ -160,6 +164,8 @@ impl ServiceConfig {
             orchestrator: self.orchestrator.clone(),
 
             is_proxy: self.is_proxy,
+
+            internal_port: self.internal_port,
         }
     }
 }
@@ -180,4 +186,6 @@ pub struct UploadHandlerParams {
     pub orchestrator: Option<String>,
 
     pub is_proxy: Option<bool>,
+
+    pub internal_port: Option<i32>,
 }

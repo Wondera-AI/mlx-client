@@ -166,6 +166,9 @@ enum ServeActions {
 
         #[arg(long, help = "GPU garuanteed resources")]
         gpu_requests: Option<u32>,
+
+        #[arg(long, help = "Optional internal port override for proxy service")]
+        internal_port: Option<i32>,
     },
     // (DeployServiceConf),
     #[command(about = "List the available services")]
@@ -442,6 +445,7 @@ async fn main() {
                 gpu_requests,
                 cpu_requests,
                 mem_requests,
+                internal_port,
             } => {
                 if *proxy {
                     info!("Deploying the Service to MLX as Docker proxy...");
@@ -469,6 +473,7 @@ async fn main() {
                     gpu_requests.clone(),
                     cpu_requests.clone(),
                     mem_requests.clone(),
+                    internal_port.clone(),
                 )
                 .await;
             }
