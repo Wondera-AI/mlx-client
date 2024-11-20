@@ -237,7 +237,7 @@ async fn main() {
     let cli = Cli::parse();
 
     debug!("Check debug level");
-    // check_for_update().await;
+    check_for_update().await;
 
     match &cli.command {
         Commands::Train { action } => match action {
