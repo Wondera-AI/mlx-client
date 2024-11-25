@@ -57,8 +57,8 @@ cd "$REPO_DIR"
 
 # Build and install the project
 echo "Building and installing MLX-Client"
-cargo build --release
-cargo install --path .
+# CARGO_BUILD_JOBS=8 cargo build --release
+CARGO_BUILD_JOBS=8 cargo install --path .
 
 # Delete the repository
 echo "Deleting the repository..."

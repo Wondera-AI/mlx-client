@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use utils::endpoints::{Endpoint, Method};
 use utils::prelude::*;
 
-#[tokio::main]
+// #[tokio::main]
 pub async fn list_services(service_name: Option<&str>, pointers: bool) -> RResult<Value, AnyErr2> {
     let mut endpoint_builder = Endpoint::builder()
         .base_url(&get_server_url().await)
