@@ -24,7 +24,7 @@ use tokio::sync::OnceCell;
 static LOCAL_SERVER_URL: &str = "http://localhost:30000/test";
 // static REMOTE_SERVER_URL: &str = "http://3.132.162.86:30000/test";
 // static REMOTE_SERVER_URL: &str = "http://52.14.40.210:30000/test";
-static REMOTE_SERVER_URL: &str = "http://10.96.199.77:30000/test";
+static REMOTE_SERVER_URL: &str = "http://3.132.162.86:30000/test";
 
 static SERVER_URL: Lazy<OnceCell<Arc<String>>> = Lazy::new(|| OnceCell::new());
 
