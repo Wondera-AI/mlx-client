@@ -4,10 +4,7 @@ use crate::serve::deploy::{
 };
 use crate::serve::get_server_url;
 use crate::{SERVICE_SCHEMA_PATH, SERVICE_TOML_PATH};
-use k8s_openapi::api::resource;
 use serde_json::json;
-use std::collections::HashMap;
-use std::env;
 use utils::{
     endpoints::{Endpoint, Method},
     errors::prelude::*,
@@ -49,11 +46,6 @@ pub async fn deploy_service(
             error!("Error: Both `image` and `name` must be provided when `proxy` is enabled.");
             std::process::exit(1);
         }
-        // let mut env_map = None;
-        // if env.is_some() {
-        //     env_map =
-        //         serde_json::from_str(&env.unwrap()).change_context(err2!("Failed to parse env"))?;
-        // }
         let env_map = env
             .map(|env_str| {
                 serde_json::from_str(&env_str).change_context(err2!("Failed to parse env"))
@@ -63,7 +55,7 @@ pub async fn deploy_service(
         ServiceConfig::new(
             name.clone()
                 .expect("Name must be provided when `proxy` is enabled."),
-            ResourceRequest::default(),
+            resources,
             env_map,
             None,
             true,
