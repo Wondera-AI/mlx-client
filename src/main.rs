@@ -236,8 +236,14 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    debug!("Check debug level");
-    check_for_update().await;
+    debug!("Check autoupdate");
+    let update_enabled = std::env::var("UPDATE")
+        .map(|value| value.to_lowercase() != "false")
+        .unwrap_or(true);
+
+    if update_enabled {
+        check_for_update().await;
+    }
 
     match &cli.command {
         Commands::Train { action } => match action {

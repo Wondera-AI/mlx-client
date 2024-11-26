@@ -11,7 +11,7 @@ layout {
         pane split_direction="horizontal" {
             pane {
                 command "zsh"
-                args "-c" "cargo build --release && cargo install --path ."
+                args "-c" "cargo install --path ."
             }
             pane {
                 command "zsh"
