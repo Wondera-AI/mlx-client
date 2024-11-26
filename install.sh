@@ -4,7 +4,8 @@
 echo "Installing system dependencies..."
 if [ -x "$(command -v apt)" ]; then
     sudo apt update
-    sudo apt install -y build-essential git curl pkg-config libssl-dev
+    # sudo apt install -y build-essential git curl pkg-config libssl-dev
+    sudo DEBIAN_FRONTEND=noninteractive apt install -y build-essential git curl pkg-config libssl-dev
 elif [ -x "$(command -v yum)" ]; then
     sudo yum groupinstall -y "Development Tools"
     sudo yum install -y pkg-config openssl-devel
