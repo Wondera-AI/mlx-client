@@ -67,3 +67,5 @@ cd ..
 rm -rf "$REPO_DIR"
 
 echo "MLX installed. To use type in bash/zsh 'mlx --help'"
+
+sudo ln -sf $HOME/.cargo/bin/mlx /usr/local/bin/mlx
