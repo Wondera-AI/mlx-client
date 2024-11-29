@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use utils::endpoints::{Endpoint, Method};
 use utils::prelude::*;
 
-#[tokio::main]
+// #[tokio::main]
 pub async fn jobs_service(service_name: &str) -> RResult<(), AnyErr2> {
     // Build the endpoint for fetching jobs
     let endpoint = Endpoint::builder()

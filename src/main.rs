@@ -175,8 +175,8 @@ enum ServeActions {
     Ls {
         #[arg(help = "Name of the service")]
         name: Option<String>,
-        #[arg(long, help = "Show only the service pointers", default_value = "false")]
-        pointers: bool,
+        // #[arg(long, help = "Show only the service pointers", default_value = "false")]
+        // pointers: bool,
     },
     #[command(about = "Remove a service")]
     Rm {
@@ -483,21 +483,21 @@ async fn main() {
                 )
                 .await;
             }
-            ServeActions::Ls { name, pointers } => {
+            ServeActions::Ls { name } => {
                 info!("Listing available services");
 
-                let _ = list_services(name.as_deref(), *pointers);
+                let _ = list_services(name.as_deref()).await;
             }
             ServeActions::Rm { name, version, all } => {
                 if let Some(version) = version {
                     info!("Removing service {} version {}", name, version);
-                    let _ = delete_service(name, Some(*version));
+                    let _ = delete_service(name, Some(*version)).await;
                 } else {
                     if !all {
                         error!("Please specify a version to remove or use the --all flag to remove all versions of the service");
                     } else {
                         info!("Removing all versions of service {}", name);
-                        let _ = delete_service(name, None);
+                        let _ = delete_service(name, None).await;
                     }
                 }
             }
@@ -517,7 +517,7 @@ async fn main() {
                 info!("Viewing logs for service: {} with job_id: {}", name, job_id);
 
                 let resp = log_service(name, job_id, *input, *response, *logs, *timer);
-                resp.unwrap();
+                resp.await.unwrap();
             }
             ServeActions::Jobs { name } => {
                 info!("Viewing jobs for service {}", name);

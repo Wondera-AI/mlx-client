@@ -52,6 +52,8 @@ pub async fn deploy_service(
             })
             .transpose()?;
 
+        debug!("Env map: {:?}", env_map);
+
         ServiceConfig::new(
             name.clone()
                 .expect("Name must be provided when `proxy` is enabled."),
@@ -67,6 +69,8 @@ pub async fn deploy_service(
             internal_port,
         )
     };
+
+    debug!("ServiceConfig: {:?}", conf);
 
     if !is_proxy {
         let service_id = format!("{}:{}", conf.service, uuid::Uuid::new_v4().to_string());

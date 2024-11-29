@@ -4,18 +4,27 @@ use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};
 use serde_json::Value;
 use std::collections::HashMap;
+use toml::ser;
 use utils::endpoints::{Endpoint, Method};
 use utils::prelude::*;
 
 // #[tokio::main]
-pub async fn list_services(service_name: Option<&str>, pointers: bool) -> RResult<Value, AnyErr2> {
+pub async fn list_services(service_name: Option<&str>) -> RResult<Value, AnyErr2> {
     let mut endpoint_builder = Endpoint::builder()
         .base_url(&get_server_url().await)
         .endpoint("/list_service")
         .method(Method::GET);
 
     let mut query = HashMap::new();
-    query.insert("pointers".to_string(), pointers.to_string());
+    query.insert(
+        "pointers".to_string(),
+        if service_name.is_none() {
+            "true"
+        } else {
+            "false"
+        }
+        .to_string(),
+    );
     if let Some(name) = service_name {
         query.insert("service_name".to_string(), name.to_string());
     }

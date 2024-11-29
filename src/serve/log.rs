@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use utils::endpoints::{Endpoint, Method};
 use utils::prelude::*;
 
-#[tokio::main]
+// #[tokio::main]
 pub async fn log_service(
     service_name: &str,
     job_id: &str,

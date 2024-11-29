@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use utils::endpoints::{Endpoint, Method};
 use utils::prelude::*;
 
-#[tokio::main]
+// #[tokio::main]
 pub async fn delete_service(
     service_name: &str,
     service_version: Option<u32>,
