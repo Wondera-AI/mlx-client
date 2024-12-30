@@ -1,4 +1,4 @@
-use crate::serve::get_server_url;
+use crate::old_serve::get_server_url;
 use clap::Args;
 use serde_json::json;
 use utils::endpoints::{Endpoint, Method};

@@ -1,10 +1,11 @@
 use crate::prelude::*;
-use crate::serve::deploy::{
+use crate::old_serve::deploy::{
     build_tag_and_push_image, ResourceRequest, ServiceConfig, ServiceSchema,
 };
-use crate::serve::get_server_url;
+use crate::old_serve::get_server_url;
 use crate::{SERVICE_SCHEMA_PATH, SERVICE_TOML_PATH};
 use serde_json::json;
+use std::collections::HashMap;
 use utils::{
     endpoints::{Endpoint, Method},
     errors::prelude::*,
@@ -20,6 +21,7 @@ pub async fn deploy_service(
     gpu_requests: Option<u32>,
     cpu_requests: Option<f32>,
     mem_requests: Option<u32>,
+    node_selectors: Option<HashMap<String, String>>,
     internal_port: Option<i32>,
 ) -> RResult<(), AnyErr2> {
     let mut conf: ServiceConfig = if std::path::Path::new(SERVICE_TOML_PATH).exists() {
@@ -28,24 +30,24 @@ pub async fn deploy_service(
     } else {
         info!("Service mlx.toml does not exist");
         let mut resources = ResourceRequest::default();
-        if gpu_requests.is_some() {
-            resources.gpu_requests = gpu_requests
-        }
-        if cpu_requests.is_some() {
-            resources.cpu_requests = cpu_requests
-        }
-        if mem_requests.is_some() {
-            resources.memory_requests = mem_requests
-        }
+        resources.gpu_requests = gpu_requests.or(resources.gpu_requests);
+        resources.cpu_requests = cpu_requests.or(resources.cpu_requests);
+        resources.memory_requests = mem_requests.or(resources.memory_requests);
+        resources
+            .node_selectors
+            .as_mut()
+            .map(|existing| existing.extend(node_selectors.unwrap_or_default()));
 
         if !is_proxy {
             error!("Service mlx.toml must exist when `proxy` is not enabled.");
             std::process::exit(1);
         }
+
         if image.is_none() || name.is_none() {
             error!("Error: Both `image` and `name` must be provided when `proxy` is enabled.");
             std::process::exit(1);
         }
+        
         let env_map = env
             .map(|env_str| {
                 serde_json::from_str(&env_str).change_context(err2!("Failed to parse env"))

@@ -1,4 +1,4 @@
-use crate::serve::get_server_url;
+use crate::old_serve::get_server_url;
 use std::collections::HashMap;
 use utils::endpoints::{Endpoint, Method};
 use utils::prelude::*;

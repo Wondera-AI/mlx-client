@@ -1,6 +1,6 @@
-use crate::serve::deploy::ServiceSchema;
+use crate::old_serve::deploy::ServiceSchema;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, process::exit};
 use utils::prelude::*;
 
 const DEFAULT_CPU_REQUEST: f32 = 1.0;
@@ -8,10 +8,16 @@ const DEFAULT_GPU_REQUEST: u32 = 0; // 0 or 1
 const DEFAULT_MEMORY_REQUEST: u32 = 1; // 1Gi
 const DEFAULT_CPU_LIMIT: u32 = 4;
 const DEFAULT_GPU_LIMIT: u32 = 1;
-const DEFAULT_MEMORY_LIMIT: u32 = 10; // 2Gi
+const DEFAULT_MEMORY_LIMIT: u32 = 100; // 100Gi
 const DEFAULT_CONCURRENT_JOBS: u32 = 20;
 const DEFAULT_ORCHESTRATOR: &str = "kube";
 const DEFAULT_ARCH: &str = "arm64";
+
+fn default_node_target_labels() -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    map.insert("nvidia.com/gpu.present".to_string(), "true".to_string());
+    map
+}
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct ResourceRequest {
@@ -30,6 +36,8 @@ pub struct ResourceRequest {
     concurrent_jobs: Option<u32>,
 
     pub arch: Option<String>,
+
+    pub node_selectors: Option<HashMap<String, String>>,
 }
 
 impl ResourceRequest {
@@ -52,6 +60,7 @@ impl ResourceRequest {
             memory_limit: Some(memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT)),
             concurrent_jobs: Some(concurrent_jobs.unwrap_or(DEFAULT_CONCURRENT_JOBS)),
             arch: Some(arch.unwrap_or(DEFAULT_ARCH.to_string())),
+            node_selectors: None,
         }
     }
 
@@ -65,6 +74,7 @@ impl ResourceRequest {
             memory_limit: Some(DEFAULT_MEMORY_LIMIT),
             concurrent_jobs: Some(DEFAULT_CONCURRENT_JOBS),
             arch: Some(DEFAULT_ARCH.to_string()),
+            node_selectors: Some(default_node_target_labels()),
         }
     }
 }
@@ -142,9 +152,28 @@ impl ServiceConfig {
             config.resources.concurrent_jobs = Some(DEFAULT_CONCURRENT_JOBS);
         }
 
+        if config.resources.arch.is_none() {
+            config.resources.arch = Some(DEFAULT_ARCH.to_string());
+        }
+
+        if config.resources.node_selectors.is_none() {
+            config.resources.node_selectors = Some(default_node_target_labels());
+        }
+
         if config.is_proxy.is_none() {
             config.is_proxy = Some(false);
         }
+
+        if config.orchestrator.is_none() {
+            config.orchestrator = Some(DEFAULT_ORCHESTRATOR.to_string());
+        }
+
+        if config.image_uri.is_none() {
+            error!("Image URI not provided");
+            exit(0);
+        }
+
+        debug!("ServiceConfig: {:?}", config);
 
         Ok(config)
     }

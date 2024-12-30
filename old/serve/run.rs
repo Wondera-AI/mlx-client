@@ -1,5 +1,5 @@
 use crate::{
-    run_python_script, serve::deploy::ServiceSchema, SERVICE_SCHEMA_PATH, SERVICE_TOML_PATH,
+    run_python_script, old_serve::deploy::ServiceSchema, SERVICE_SCHEMA_PATH, SERVICE_TOML_PATH,
 };
 use reqwest::Client;
 use serde::Deserialize;

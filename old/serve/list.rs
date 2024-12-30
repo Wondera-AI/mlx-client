@@ -1,4 +1,4 @@
-use crate::serve::get_server_url;
+use crate::old_serve::get_server_url;
 use comfy_table::modifiers::UTF8_ROUND_CORNERS;
 use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, CellAlignment, ContentArrangement, Table};

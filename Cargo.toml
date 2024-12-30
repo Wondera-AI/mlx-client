@@ -3,6 +3,14 @@ name = "client"
 version = "0.1.0"   
 edition = "2021"
 
+# [lib]
+# name = "mlx"       
+# path = "src/lib.rs"
+
+[[bin]]
+name = "mlx"
+path = "src/main.rs"
+
 [dependencies]
 # sysinfo = "0.32.1"
 utils = { git = "https://github.com/alexlatif/rutils.git", branch = "main"}
@@ -40,10 +48,8 @@ chrono = "0.4.38"
 once_cell = "1.19.0"
 toml = "0.8.19"
 dirs-next = "2.0.0"
-
-[[bin]]
-name = "mlx"
-path = "src/main.rs"
+thiserror = "2.0.9"
+async-trait = "0.1.83"
 
 # 1 rebuild axum server remotely
 # 2 tool design - S3, HTTPS
