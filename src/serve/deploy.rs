@@ -1,85 +1,47 @@
-use crate::{command, define_error, CommandError};
-use error_stack::Result;
+use super::docker::build_tag_and_push_image;
+use super::service::{ResourceRequest, ServiceConfig, ServiceSchema};
+use crate::CommandHandler;
+use crate::{command, get_server_url, CommandError};
+use error_stack::{Report, Result};
+use serde_json::json;
 use std::collections::HashMap;
-use tracing::info;
+use thiserror::Error;
+use tracing::{debug, error, info};
+use utils::endpoints::{Endpoint, Method};
 
-define_error! {
-    pub enum DeployError : CommandError {
-        ImageBuild("Image build failed"),
-        Upload("Service upload failed"),
-        // Config("Configuration validation failed"),
-        // Validation("Environment validation failed"),
-    }
+static IMAGE_REGISTRY: &str = "h.nodestaking.com/mlx";
+static SERVICE_SCHEMA_PATH: &str = "schema.json";
+static SERVICE_TOML_PATH: &str = "mlx.toml";
+
+#[derive(Debug, thiserror::Error)]
+pub enum DeployError {
+    #[error("Failed to parse configuration file: {0}")]
+    ConfigParse(String),
+
+    #[error("Service mlx.toml file is missing")]
+    MissingToml,
+
+    #[error("Both image and name must be provided when proxy is enabled")]
+    MissingImageOrName,
+
+    #[error("Failed to build and push Docker image: {0}")]
+    ImageBuildError(String),
+
+    #[error("Failed to parse service schema: {0}")]
+    SchemaParseError(String),
+
+    #[error("Failed to construct endpoint: {0}")]
+    EndpointBuilder(String),
+
+    #[error("Failed to send request: {0}")]
+    RequestError(String),
 }
-
-// command! {
-//     #[desc = "Deploy a service to the MLX platform"]
-//     DeployCommand<DeployError, ()> {
-//         #[desc = "Run as Docker proxy mode instead of building image"]
-//         proxy: bool = false,
-
-//         #[desc = "Docker image to deploy (required in proxy mode)"]
-//         image: Option<String>,
-
-//         #[desc = "Service name for deployment"]
-//         name: Option<String>,
-
-//         #[desc = "Environment variables as JSON string (e.g. '{\"KEY\":\"VALUE\"}')"]
-//         env: Option<String>,
-
-//         #[desc = "Number of GPUs to request"]
-//         gpu_requests: Option<u32>,
-
-//         #[desc = "CPU cores to request (can be fractional)"]
-//         cpu_requests: Option<f32>,
-
-//         #[desc = "Memory in MB to request"]
-//         mem_requests: Option<u32>,
-
-//         #[desc = "Override default internal port"]
-//         internal_port: Option<i32>,
-
-//         #[desc = "Node selector labels (format: key1=value1,key2=value2)"]
-//         node_selectors: Option<HashMap<String, String>>,
-//     } => DeployHandler
-// }
-
-// use std::fmt;
-
-// #[derive(Debug)]
-// struct ParseError(String);
-
-// impl fmt::Display for ParseError {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{}", self.0)
-//     }
-// }
-
-// impl std::error::Error for ParseError {}
-
-// fn parse_key_val_pairs(s: &str) -> Result<(String, String), ParseError> {
-//     let mut parts = s.splitn(2, '=');
-//     let key = parts
-//         .next()
-//         .ok_or_else(|| ParseError("Missing key in key=value pair".to_string()))?;
-//     let value = parts
-//         .next()
-//         .ok_or_else(|| ParseError("Missing value in key=value pair".to_string()))?;
-//     Ok((key.to_string(), value.to_string()))
-// }
-
-// fn parse_hashmap(input: &str) -> Result<HashMap<String, String>, ParseError> {
-//     input
-//         .split(',')
-//         .map(parse_key_val_pairs)
-//         .collect::<Result<HashMap<_, _>, _>>()
-// }
 
 command! {
     #[desc = "Deploy a service to the MLX platform"]
-    DeployCommand<DeployError, ()> {
+    DeployCommand {
         #[arg(help = "Run as Docker proxy mode instead of building image")]
-        proxy: bool = false,
+        proxy: bool,
 
         #[arg(help = "Docker image to deploy (required in proxy mode)")]
         image: Option<String>,
@@ -87,7 +49,7 @@ command! {
         #[arg(help = "Service name for deployment")]
         name: Option<String>,
 
-        #[arg(help = "Environment variables as JSON string (e.g. '{\"KEY\":\"VALUE\"}')")]
+        #[arg(help = "Environment variables (format: key1=value1,key2=value2)")]
         env: Option<String>,
 
         #[arg(help = "Number of GPUs to request")]
@@ -113,62 +75,197 @@ command! {
 pub struct DeployHandler;
 
 impl DeployHandler {
-    async fn execute(cmd: DeployCommand) -> Result<(), DeployError> {
+    async fn execute(cmd: DeployCommand) -> Result<(), Report<DeployError>> {
         info!("Deploying service: {:?}", cmd);
+
+        let conf = if std::path::Path::new(SERVICE_TOML_PATH).exists() {
+            info!("Service mlx.toml exists, parsing file...");
+            ServiceConfig::from_toml_file(SERVICE_TOML_PATH)
+                .change_context(DeployError::ConfigParse)?
+        } else {
+            info!("Service mlx.toml does not exist");
+
+            if !cmd.proxy {
+                return Err(Report::new(DeployError::MissingToml));
+            }
+
+            match (cmd.image.as_ref(), cmd.name.as_ref()) {
+                (Some(image), Some(name)) => ServiceConfig::new_proxy(
+                    name.clone(),
+                    build_resource_request(&cmd),
+                    image.clone(),
+                    cmd.internal_port,
+                ),
+                _ => return Err(Report::new(DeployError::MissingImageOrName)),
+            }
+        };
+
+        debug!("ServiceConfig: {:?}", conf);
+
+        if !cmd.proxy {
+            let service_id = format!("{}:{}", conf.service, uuid::Uuid::new_v4());
+            let image_uri = format!("{}/{}", IMAGE_REGISTRY, service_id);
+
+            info!("Building and pushing image (eta 2-5 mins): {}", image_uri);
+
+            build_tag_and_push_image(
+                &service_id,
+                &image_uri,
+                conf.resources.arch.as_deref().unwrap_or_default(),
+            )
+            .change_context(DeployError::ImageBuildError)?;
+
+            info!("Image {} pushed successfully", image_uri);
+        }
+
+        info!("Building ServiceSchema...");
+        let service_schema = if cmd.proxy {
+            ServiceSchema::default()
+        } else {
+            ServiceSchema::from_json_file(SERVICE_SCHEMA_PATH)
+                .await
+                .change_context(DeployError::SchemaParseError)?
+        };
+
+        debug!("ServiceSchema: {:?}", service_schema);
+
+        let upload_params = conf.to_upload_handler_params(service_schema);
+        let endpoint = Endpoint::builder()
+            .base_url(&get_server_url().await)
+            .endpoint("/upload_service")
+            .method(Method::POST)
+            .json_body(json!(upload_params))
+            .build()
+            .change_context(DeployError::EndpointBuilder)?;
+
+        endpoint.send().await?;
+
+        info!("Service {} deployed successfully", conf.service);
         Ok(())
     }
 }
-// let mut config = Self::load_config(&cmd)?;
 
-// if !cmd.proxy {
-//     Self::validate_environment()?;
-//     let image = Self::build_image(&config).await?;
-//     config.set_image(image);
-// }
+fn build_resource_request(cmd: &DeployCommand) -> ResourceRequest {
+    let mut resources = ResourceRequest::default();
+    resources.gpu_requests = cmd.gpu_requests.or(resources.gpu_requests);
+    resources.cpu_requests = cmd.cpu_requests.or(resources.cpu_requests);
+    resources.memory_requests = cmd.mem_requests.or(resources.memory_requests);
 
-// Self::deploy_to_mlx(&config).await?;
-//     Ok(())
-// }
+    if let Some(selectors) = &cmd.node_selectors {
+        resources
+            .node_selectors
+            .get_or_insert_with(HashMap::new)
+            .extend(selectors.clone());
+    }
 
-// async fn load_config(cmd: &DeployCommand) -> Result<ServiceConfig, DeployError> {
-//     if std::path::Path::new(SERVICE_TOML_PATH).exists() {
-//         ServiceConfig::from_toml_file(SERVICE_TOML_PATH)
-//             .map_err(DeployError::Config)
-//     } else {
-//         Self::create_proxy_config(cmd)
+    resources
+}
+
+// #[async_trait::async_trait]
+// impl CommandHandler<DeployCommand> for DeployHandler {
+//     async fn handle(cmd: DeployCommand) -> error_stack::Result<(), CommandError> {
+//         info!("Deploying service: {:?}", cmd);
+
+//         // let selectors = cmd.node_selectors.unwrap_or_default();
+//         // info!("Node selectors: {:?}", selectors);
+
+//         // let conf: ServiceConfig = if std::path::Path::new(SERVICE_TOML_PATH).exists() {
+//         //     info!("Service mlx.toml exists, parsing file...");
+//         //     ServiceConfig::from_toml_file(SERVICE_TOML_PATH)
+//         //         .map_err(|e| DeployError::ConfigParse(e.to_string()))?
+//         // } else {
+//         //     info!("Service mlx.toml does not exist");
+
+//         //     let mut resources = ResourceRequest::default();
+//         //     resources.gpu_requests = cmd.gpu_requests.or(resources.gpu_requests);
+//         //     resources.cpu_requests = cmd.cpu_requests.or(resources.cpu_requests);
+//         //     resources.memory_requests = cmd.mem_requests.or(resources.memory_requests);
+//         //     resources
+//         //         .node_selectors
+//         //         .as_mut()
+//         //         .map(|existing| existing.extend(selectors.clone()));
+
+//         //     if !cmd.proxy {
+//         //         error!("Service mlx.toml must exist when proxy is not enabled.");
+//         //         return Err(error_stack::Report::new(DeployError::MissingToml)
+//         //             .change_context(CommandError::ExecutionError));
+//         //     }
+
+//         //     if cmd.image.is_none() || cmd.name.is_none() {
+//         //         error!("Error: Both image and name must be provided when proxy is enabled.");
+//         //         return Err(error_stack::Report::new(DeployError::MissingImageOrName)
+//         //             .change_context(CommandError::ExecutionError));
+//         //     }
+
+//         //     ServiceConfig::new(
+//         //         cmd.name
+//         //             .clone()
+//         //             .expect("Name must be provided when proxy is enabled."),
+//         //         resources,
+//         //         None,
+//         //         None,
+//         //         true,
+//         //         Some(
+//         //             cmd.image
+//         //                 .clone()
+//         //                 .expect("Image must be provided when proxy is enabled."),
+//         //         ),
+//         //         cmd.internal_port,
+//         //     )
+//         // };
+
+//         // debug!("ServiceConfig: {:?}", conf);
+
+//         // if !cmd.proxy {
+//         //     let service_id = format!("{}:{}", conf.service, uuid::Uuid::new_v4().to_string());
+//         //     let image_uri = format!("{}/{}", IMAGE_REGISTRY, service_id);
+//         //     conf.image_uri = Some(image_uri.clone());
+//         //     info!(
+//         //         "Building, tagging and pushing new image (eta 2-5 mins): {}...",
+//         //         image_uri
+//         //     );
+
+//         //     build_tag_and_push_image(
+//         //         &service_id,
+//         //         &image_uri,
+//         //         &conf.resources.arch.as_deref().unwrap_or_default(),
+//         //     )
+//         //     .map_err(|e| DeployError::ImageBuildError(e.to_string()))
+//         //     .change_context(CommandError::ExecutionError)?;
+
+//         //     info!("Image {} has been pushed to the registry.", image_uri);
+//         // }
+
+//         // info!("Building ServiceSchema...");
+//         // let service_schema: ServiceSchema = if cmd.proxy {
+//         //     ServiceSchema::default()
+//         // } else {
+//         //     ServiceSchema::from_json_file(SERVICE_SCHEMA_PATH)
+//         //         .await
+//         //         .map_err(|e| DeployError::SchemaParseError(e.to_string()))
+//         //         .change_context(CommandError::ExecutionError)?
+//         // };
+//         // debug!("ServiceSchema: {:?}", service_schema);
+
+//         // info!("Building UploadHandlerParams...");
+//         // let upload_handler_params = conf.to_upload_handler_params(service_schema);
+//         // debug!("UploadHandlerParams: {:?}", upload_handler_params);
+
+//         // let endpoint = Endpoint::builder()
+//         //     .base_url(&get_server_url().await)
+//         //     .endpoint("/upload_service")
+//         //     .method(Method::POST)
+//         //     .json_body(json!(upload_handler_params))
+//         //     .build()
+//         //     .map_err(|e| DeployError::EndpointBuilder(e.to_string()))
+//         //     .change_context(CommandError::ExecutionError)?
+//         //     .send()
+//         //     .await
+//         //     .map_err(|e| DeployError::RequestError(e.to_string()))
+//         //     .change_context(CommandError::ExecutionError)?;
+
+//         // info!("Service {} has been deployed successfully.", conf.service);
+
+//         Ok(())
 //     }
-// }
-
-// async fn validate_environment() -> Result<(), DeployError> {
-//     let required_files = [SCRIPT_PATH, CONFIG_PATH, SERVICE_TOML_PATH];
-//     for file in required_files {
-//         if !std::path::Path::new(file).exists() {
-//             return Err(DeployError::Validation)?;
-//         }
-//     }
-//     Ok(())
-// }
-
-// async fn build_image(config: &ServiceConfig) -> Result<String, DeployError> {
-//     let image_uri = format!("{}/{}", IMAGE_REGISTRY, uuid::Uuid::new_v4());
-
-//     tokio::process::Command::new("docker")
-//         .args(["build", "-t", &image_uri, "."])
-//         .output()
-//         .await
-//         .map_err(|_| DeployError::ImageBuild)?;
-
-//     Ok(image_uri)
-// }
-
-// async fn deploy_to_mlx(config: &ServiceConfig) -> Result<(), DeployError> {
-//     reqwest::Client::new()
-//         .post(&format!("{}/upload_service", get_server_url().await))
-//         .json(config)
-//         .send()
-//         .await
-//         .map_err(|_| DeployError::Upload)?;
-
-//     Ok(())
-// }
 // }

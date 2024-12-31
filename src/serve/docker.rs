@@ -1,7 +1,7 @@
-use crate::prelude::*;
 use std::io::Write;
 use std::process::Command;
 use std::process::Stdio;
+use tracing::info;
 use utils::{cmd::run_command, errors::prelude::*};
 
 pub fn build_tag_and_push_image(

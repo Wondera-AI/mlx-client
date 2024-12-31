@@ -24,12 +24,20 @@ command_group! {
     }
 }
 
+// handlers
 pub mod deploy;
 // pub mod jobs;
 // pub mod list;
 // pub mod logs;
 // pub mod remove;
 // pub mod scale;
+
+// re-exports
+mod docker;
+mod service;
+
+// pub use docker::build_tag_and_push_image;
+// pub use service::ServiceConfig;
 
 pub use deploy::DeployCommand;
 // pub use jobs::JobsCommand;
