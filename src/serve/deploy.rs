@@ -1,46 +1,112 @@
 use crate::{command, define_error, CommandError};
 use error_stack::Result;
+use std::collections::HashMap;
 use tracing::info;
 
 define_error! {
     pub enum DeployError : CommandError {
         ImageBuild("Image build failed"),
-        Config("Configuration validation failed"),
-        Validation("Environment validation failed"),
         Upload("Service upload failed"),
+        // Config("Configuration validation failed"),
+        // Validation("Environment validation failed"),
     }
 }
+
+// command! {
+//     #[desc = "Deploy a service to the MLX platform"]
+//     DeployCommand<DeployError, ()> {
+//         #[desc = "Run as Docker proxy mode instead of building image"]
+//         proxy: bool = false,
+
+//         #[desc = "Docker image to deploy (required in proxy mode)"]
+//         image: Option<String>,
+
+//         #[desc = "Service name for deployment"]
+//         name: Option<String>,
+
+//         #[desc = "Environment variables as JSON string (e.g. '{\"KEY\":\"VALUE\"}')"]
+//         env: Option<String>,
+
+//         #[desc = "Number of GPUs to request"]
+//         gpu_requests: Option<u32>,
+
+//         #[desc = "CPU cores to request (can be fractional)"]
+//         cpu_requests: Option<f32>,
+
+//         #[desc = "Memory in MB to request"]
+//         mem_requests: Option<u32>,
+
+//         #[desc = "Override default internal port"]
+//         internal_port: Option<i32>,
+
+//         #[desc = "Node selector labels (format: key1=value1,key2=value2)"]
+//         node_selectors: Option<HashMap<String, String>>,
+//     } => DeployHandler
+// }
+
+// use std::fmt;
+
+// #[derive(Debug)]
+// struct ParseError(String);
+
+// impl fmt::Display for ParseError {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "{}", self.0)
+//     }
+// }
+
+// impl std::error::Error for ParseError {}
+
+// fn parse_key_val_pairs(s: &str) -> Result<(String, String), ParseError> {
+//     let mut parts = s.splitn(2, '=');
+//     let key = parts
+//         .next()
+//         .ok_or_else(|| ParseError("Missing key in key=value pair".to_string()))?;
+//     let value = parts
+//         .next()
+//         .ok_or_else(|| ParseError("Missing value in key=value pair".to_string()))?;
+//     Ok((key.to_string(), value.to_string()))
+// }
+
+// fn parse_hashmap(input: &str) -> Result<HashMap<String, String>, ParseError> {
+//     input
+//         .split(',')
+//         .map(parse_key_val_pairs)
+//         .collect::<Result<HashMap<_, _>, _>>()
+// }
 
 command! {
     #[desc = "Deploy a service to the MLX platform"]
     DeployCommand<DeployError, ()> {
-        #[desc = "Run as Docker proxy mode instead of building image"]
+        #[arg(help = "Run as Docker proxy mode instead of building image")]
         proxy: bool = false,
 
-        #[desc = "Docker image to deploy (required in proxy mode)"]
+        #[arg(help = "Docker image to deploy (required in proxy mode)")]
         image: Option<String>,
 
-        #[desc = "Service name for deployment"]
+        #[arg(help = "Service name for deployment")]
         name: Option<String>,
 
-        #[desc = "Environment variables as JSON string (e.g. '{\"KEY\":\"VALUE\"}')"]
+        #[arg(help = "Environment variables as JSON string (e.g. '{\"KEY\":\"VALUE\"}')")]
         env: Option<String>,
 
-        #[desc = "Number of GPUs to request"]
+        #[arg(help = "Number of GPUs to request")]
         gpu_requests: Option<u32>,
 
-        #[desc = "CPU cores to request (can be fractional)"]
+        #[arg(help = "CPU cores to request (can be fractional)")]
         cpu_requests: Option<f32>,
 
-        #[desc = "Memory in MB to request"]
+        #[arg(help = "Memory in MB to request")]
         mem_requests: Option<u32>,
 
-        #[desc = "Override default internal port"]
+        #[arg(help = "Override default internal port")]
         internal_port: Option<i32>,
 
-        // #[desc = "Node selector labels (format: key1=value1,key2=value2)"]
-        // #[clap(value_parser = crate::parse_key_val, value_delimiter = ',')]
-        // node_selectors: Option<HashMap<String, String>>,
+        #[arg(
+            help = "Node selector labels (format: key1=value1,key2=value2)",
+            value_parser = crate::parse_clap_hashmap()
+        )]
+        node_selectors: Option<HashMap<String, String>>,
     } => DeployHandler
 }
 
@@ -48,7 +114,7 @@ pub struct DeployHandler;
 
 impl DeployHandler {
     async fn execute(cmd: DeployCommand) -> Result<(), DeployError> {
-        info!("Deploying service");
+        info!("Deploying service: {:?}", cmd);
         Ok(())
     }
 }

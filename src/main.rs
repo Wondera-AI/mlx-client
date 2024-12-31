@@ -5,6 +5,7 @@ mod serve;
 use auto_update::check_for_update;
 use clap::Parser;
 use serve::ServeCommand;
+use std::collections::HashMap;
 use tracing_subscriber::{filter::EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use utils::prelude::*;
 
@@ -16,10 +17,11 @@ struct Cli {
 }
 define_error! {
     pub enum CommandError {
-        Operation("Command operation failed"),
-        Config("Command configuration invalid"),
-        Validation("Command validation failed"),
+        Operation("Operation failed"),
+        Config("Configuration invalid"),
+        Validation("Validation failed"),
         Communication("Failed to communicate with server"),
+        UsageError("Failed to parse key-value pair"),
     }
 }
 
@@ -46,17 +48,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn parse_key_val<T, U>(
-    s: &str,
-) -> Result<(T, U), Box<dyn std::error::Error + Send + Sync + 'static>>
-where
-    T: std::str::FromStr,
-    T::Err: std::error::Error + Send + Sync + 'static,
-    U: std::str::FromStr,
-    U::Err: std::error::Error + Send + Sync + 'static,
-{
-    let pos = s
-        .find('=')
-        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{s}`"))?;
-    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+fn parse_key_val_pairs(s: &str) -> Result<(String, String), CommandError> {
+    let mut parts = s.splitn(2, '=');
+    let key = parts
+        .next()
+        .filter(|k| !k.trim().is_empty())
+        .ok_or_else(|| {
+            CommandError::UsageError("Missing or empty key in key=value pair".to_string())
+        })?;
+    let value = parts
+        .next()
+        .filter(|v| !v.trim().is_empty())
+        .ok_or_else(|| {
+            CommandError::UsageError("Missing or empty value in key=value pair".to_string())
+        })?;
+    Ok((key.to_string(), value.to_string()))
+}
+
+fn parse_hashmap(input: &str) -> Result<HashMap<String, String>, CommandError> {
+    input
+        .split(',')
+        .map(parse_key_val_pairs)
+        .collect::<Result<HashMap<_, _>, _>>()
+}
+
+fn parse_clap_hashmap() -> clap::builder::ValueParser {
+    clap::builder::ValueParser::new(parse_hashmap)
 }
