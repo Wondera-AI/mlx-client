@@ -45,9 +45,36 @@ pub enum CommandError {
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
 
+// #[async_trait::async_trait]
+// pub trait CommandHandler<C> {
+//     async fn handle(cmd: C) -> error_stack::Result<(), CommandError>;
+// }
+
+/// The Handler trait defines how commands are executed and errors are handled.
+/// It uses error-stack's Report type to provide rich error context and stack traces.
 #[async_trait::async_trait]
-pub trait CommandHandler<C> {
-    async fn handle(cmd: C) -> error_stack::Result<(), CommandError>;
+pub trait Handler {
+    /// The command type this handler processes
+    type Command;
+
+    /// The error type that can occur during command execution
+    type Error: std::error::Error + Send + Sync + 'static;
+
+    /// Execute the command and return a Result wrapped in a Report
+    /// This provides stack traces and error context for debugging
+    async fn handle(command: Self::Command) -> Result<(), Report<Self::Error>>;
+}
+
+/// A trait for converting regular Results into Report-wrapped Results
+/// This helps maintain error context while keeping code ergonomic
+pub trait IntoReport<T, E> {
+    fn into_report(self) -> Result<T, Report<E>>;
+}
+
+impl<T, E: std::error::Error + Send + Sync + 'static> IntoReport<T, E> for Result<T, E> {
+    fn into_report(self) -> Result<T, Report<E>> {
+        self.map_err(Report::new)
+    }
 }
 
 #[derive(Parser)]

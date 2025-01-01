@@ -19,9 +19,9 @@ macro_rules! command {
         }
 
         #[async_trait::async_trait]
-        impl crate::command::Handler for $handler {
+        impl crate::Handler for $handler {
             type Command = $name;
-            type Error = crate::error::CommandError;
+            type Error = crate::CommandError;
 
             async fn handle(command: Self::Command) -> Result<(), error_stack::Report<Self::Error>> {
                 Self::execute(command)

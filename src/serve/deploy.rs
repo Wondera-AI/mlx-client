@@ -75,7 +75,7 @@ command! {
 pub struct DeployHandler;
 
 impl DeployHandler {
-    async fn execute(cmd: DeployCommand) -> Result<(), Report<DeployError>> {
+    async fn handle(cmd: DeployCommand) -> Result<(), Report<DeployError>> {
         info!("Deploying service: {:?}", cmd);
 
         let conf = if std::path::Path::new(SERVICE_TOML_PATH).exists() {
@@ -136,9 +136,9 @@ impl DeployHandler {
             .method(Method::POST)
             .json_body(json!(upload_params))
             .build()
-            .change_context(DeployError::EndpointBuilder)?;
-
-        endpoint.send().await?;
+            .change_context(DeployError::EndpointBuilder)?
+            .send()
+            .await?;
 
         info!("Service {} deployed successfully", conf.service);
         Ok(())
