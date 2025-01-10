@@ -155,6 +155,12 @@ enum ServeActions {
         #[arg(long, help = "Service name")]
         name: Option<String>,
 
+        #[arg(long, help = "Cluster name")]
+        cluster: String,
+
+        #[arg(long, help = "GPU garuanteed resources")]
+        gpu_requests: Option<u32>,
+
         #[arg(long, help = "Environment variables as string of dict")]
         env: Option<String>,
 
@@ -163,9 +169,6 @@ enum ServeActions {
 
         #[arg(long, help = "mem garuanteed resources")]
         mem_requests: Option<u32>,
-
-        #[arg(long, help = "GPU garuanteed resources")]
-        gpu_requests: Option<u32>,
 
         #[arg(long, help = "Optional internal port override for proxy service")]
         internal_port: Option<i32>,
@@ -452,6 +455,7 @@ async fn main() {
                 cpu_requests,
                 mem_requests,
                 internal_port,
+                cluster,
             } => {
                 if *proxy {
                     info!("Deploying the Service to MLX as Docker proxy...");
@@ -475,6 +479,7 @@ async fn main() {
                     *proxy,
                     name.clone(),
                     image.clone(),
+                    cluster.clone(),
                     env.clone(),
                     gpu_requests.clone(),
                     cpu_requests.clone(),

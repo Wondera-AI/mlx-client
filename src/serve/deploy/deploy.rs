@@ -16,9 +16,10 @@ pub async fn deploy_service(
     is_proxy: bool,
     name: Option<String>,
     image: Option<String>,
+    cluster: String,
     env: Option<String>,
     gpu_requests: Option<u32>,
-    cpu_requests: Option<f32>,
+    cpu_requests: Option<f32>,  
     mem_requests: Option<u32>,
     internal_port: Option<i32>,
 ) -> RResult<(), AnyErr2> {
@@ -27,16 +28,16 @@ pub async fn deploy_service(
         ServiceConfig::from_toml_file(SERVICE_TOML_PATH).unwrap()
     } else {
         info!("Service mlx.toml does not exist");
-        let mut resources = ResourceRequest::default();
-        if gpu_requests.is_some() {
-            resources.gpu_requests = gpu_requests
-        }
-        if cpu_requests.is_some() {
-            resources.cpu_requests = cpu_requests
-        }
-        if mem_requests.is_some() {
-            resources.memory_requests = mem_requests
-        }
+        let resources = ResourceRequest::new(
+            cpu_requests,
+            gpu_requests,
+            mem_requests,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
 
         if !is_proxy {
             error!("Service mlx.toml must exist when `proxy` is not enabled.");
@@ -59,8 +60,8 @@ pub async fn deploy_service(
                 .expect("Name must be provided when `proxy` is enabled."),
             resources,
             env_map,
-            None,
-            true,
+            Some(cluster),
+            is_proxy,
             Some(
                 image
                     .clone()

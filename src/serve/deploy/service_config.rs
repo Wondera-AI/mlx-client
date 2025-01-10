@@ -6,11 +6,11 @@ use utils::prelude::*;
 const DEFAULT_CPU_REQUEST: f32 = 1.0;
 const DEFAULT_GPU_REQUEST: u32 = 0; // 0 or 1
 const DEFAULT_MEMORY_REQUEST: u32 = 1; // 1Gi
-const DEFAULT_CPU_LIMIT: u32 = 4;
+const DEFAULT_CPU_LIMIT: f32 = 10.0;
 const DEFAULT_GPU_LIMIT: u32 = 1;
-const DEFAULT_MEMORY_LIMIT: u32 = 10; // 2Gi
+const DEFAULT_MEMORY_LIMIT: u32 = 80; // 2Gi
 const DEFAULT_CONCURRENT_JOBS: u32 = 20;
-const DEFAULT_ORCHESTRATOR: &str = "kube";
+const DEFAULT_ORCHESTRATOR: &str = "kube-io";
 const DEFAULT_ARCH: &str = "arm64";
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -21,7 +21,7 @@ pub struct ResourceRequest {
 
     pub memory_requests: Option<u32>,
 
-    cpu_limit: Option<u32>,
+    cpu_limit: Option<f32>,
 
     gpu_limit: Option<u32>,
 
@@ -37,7 +37,7 @@ impl ResourceRequest {
         cpu_requests: Option<f32>,
         gpu_requests: Option<u32>,
         memory_requests: Option<u32>,
-        cpu_limit: Option<u32>,
+        cpu_limit: Option<f32>,
         gpu_limit: Option<u32>,
         memory_limit: Option<u32>,
         concurrent_jobs: Option<u32>,
@@ -54,19 +54,6 @@ impl ResourceRequest {
             arch: Some(arch.unwrap_or(DEFAULT_ARCH.to_string())),
         }
     }
-
-    pub fn default() -> Self {
-        Self {
-            cpu_requests: Some(DEFAULT_CPU_REQUEST),
-            gpu_requests: Some(DEFAULT_GPU_REQUEST),
-            memory_requests: Some(DEFAULT_MEMORY_REQUEST),
-            cpu_limit: Some(DEFAULT_CPU_LIMIT),
-            gpu_limit: Some(DEFAULT_GPU_LIMIT),
-            memory_limit: Some(DEFAULT_MEMORY_LIMIT),
-            concurrent_jobs: Some(DEFAULT_CONCURRENT_JOBS),
-            arch: Some(DEFAULT_ARCH.to_string()),
-        }
-    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -77,7 +64,7 @@ pub struct ServiceConfig {
 
     env_vars: Option<HashMap<String, String>>,
 
-    orchestrator: Option<String>, // default to "wondera" if not provided
+    orchestrator: String,
 
     is_proxy: Option<bool>, // default to false if not provided
 
@@ -100,7 +87,7 @@ impl ServiceConfig {
             service,
             resources,
             env_vars,
-            orchestrator: Some(orchestrator.unwrap_or(DEFAULT_ORCHESTRATOR.to_string())),
+            orchestrator: orchestrator.unwrap_or(DEFAULT_ORCHESTRATOR.to_string()),
             is_proxy: Some(is_proxy),
             image_uri,
             internal_port,
@@ -183,7 +170,7 @@ pub struct UploadHandlerParams {
 
     pub env_vars: Option<HashMap<String, String>>,
 
-    pub orchestrator: Option<String>,
+    pub orchestrator: String,
 
     pub is_proxy: Option<bool>,
 
